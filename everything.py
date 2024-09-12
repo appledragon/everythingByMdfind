@@ -74,6 +74,8 @@ def open_with_vscode():
     except Exception as e:
         messagebox.showerror("Error", f"Could not open with VSCode: {str(e)}")
 
+def on_double_click(event):
+    open_with_vscode()
 
 def on_right_click(event):
     row_id = tree_result.identify_row(event.y)
@@ -207,6 +209,7 @@ context_menu.add_command(label="Copy file name only", command=copy_file_name_onl
 context_menu.add_command(label="Open in finder", command=open_path_in_finder)
 
 tree_result.bind("<Button-2>", on_right_click)
+tree_result.bind("<Double-1>", on_double_click)
 
 search_delay_id = None
 root.mainloop()
