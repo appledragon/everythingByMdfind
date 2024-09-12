@@ -16,7 +16,7 @@ def search_files():
 
     # check if dir exist
     if directory and not os.path.isdir(directory):
-        messagebox.showwarning("Warning", f"The directory '{directory}' does not exist.")
+        show_tooltip("Warning", f"The directory '{directory}' does not exist.")
         return
 
     cmd = ['mdfind']
@@ -35,7 +35,7 @@ def search_files():
             update_tree_view([])
             return
     except Exception as e:
-        messagebox.showerror("Error", str(e))
+        show_tooltip("Error", str(e))
         return
     
     # Collect file data
@@ -60,6 +60,19 @@ def update_tree_view(files_info):
         file_data.append(item)
         tree_result.insert('', tk.END, values=(item[0], display_size, display_time, item[3]))
 
+def show_tooltip(title, text):
+    tooltip = tk.Toplevel(root)
+    # set tooltip window on top of the main window, in the center
+    x = root.winfo_x() + root.winfo_width() // 2 - 100
+    y = root.winfo_y() + root.winfo_height() // 2 - 25
+    tooltip.geometry(f"+{x}+{y}")
+    tooltip.title(title)
+    # tooltip.overrideredirect(True)  # remove window decorations
+    # tooltip.configure(bg='black')  # set background color to black
+    label = tk.Label(tooltip, text=text)  # set text color to white
+    label.pack(pady=10)
+    tooltip.after(1000, tooltip.destroy)
+
 def format_size(size):
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size < 1024:
@@ -72,7 +85,7 @@ def open_with_vscode():
     try:
         subprocess.run(['/Applications/Visual Studio Code.app/Contents/MacOS/Electron', file_path], check=True)
     except Exception as e:
-        messagebox.showerror("Error", f"Could not open with VSCode: {str(e)}")
+        show_tooltip("Error", f"Could not open with VSCode: {str(e)}")
 
 def on_double_click(event):
     open_with_vscode()
@@ -92,9 +105,9 @@ def delete_file():
         try:
             os.remove(file_path)
             tree_result.delete(selected_item)
-            messagebox.showinfo("Deleted", f"File '{file_path}' deleted successfully.")
+            show_tooltip("Deleted", f"File '{file_path}' deleted successfully.")
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            show_tooltip("Error", str(e))
 
 def copy_file():
     selected_item = tree_result.selection()[0]
@@ -113,7 +126,7 @@ def copy_full_path():
     root.clipboard_clear()
     root.clipboard_append(file_path)
     root.update()
-    messagebox.showinfo("Copied", "Full path copied to clipboard.")
+    show_tooltip("Copied", "Full path copied to clipboard.")
 
 def copy_file_name_only():
     selected_item = tree_result.selection()[0]
@@ -121,7 +134,7 @@ def copy_file_name_only():
     root.clipboard_clear()
     root.clipboard_append(file_name)
     root.update()
-    messagebox.showinfo("Copied", "File name copied to clipboard.")
+    show_tooltip("Copied", "File name copied to clipboard.")
 
 def copy_path_only():
     selected_item = tree_result.selection()[0]
@@ -130,7 +143,7 @@ def copy_path_only():
     root.clipboard_clear()
     root.clipboard_append(directory_path)
     root.update()
-    messagebox.showinfo("Copied", "Directory path copied to clipboard.")
+    show_tooltip("Copied", "Directory path copied to clipboard.")
 
 def open_path_in_finder():
     selected_item = tree_result.selection()[0]
@@ -138,7 +151,7 @@ def open_path_in_finder():
     try:
         subprocess.run(['open', '-R', file_path], check=True)
     except Exception as e:
-        messagebox.showerror("Error", f"Could not open Finder: {str(e)}")
+        show_tooltip("Error", f"Could not open Finder: {str(e)}")
 
 def sort_treeview(col, reverse):
     global file_data
