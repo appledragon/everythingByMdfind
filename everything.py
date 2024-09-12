@@ -14,10 +14,16 @@ def search_files():
         tree_result.delete(*tree_result.get_children())
         return
 
-    # check if dir exist
+   # check if dir exist
     if directory and not os.path.isdir(directory):
-        show_tooltip("Warning", f"The directory '{directory}' does not exist.")
-        return
+        if directory.startswith("~/"):
+            directory = os.path.expanduser(directory)
+            if not os.path.isdir(directory):
+                show_tooltip("Warning", f"The directory '{directory}' does not exist.")
+                return
+        else:
+            show_tooltip("Warning", f"The directory '{directory}' does not exist.")
+            return
 
     cmd = ['mdfind']
     if search_by_name.get():
