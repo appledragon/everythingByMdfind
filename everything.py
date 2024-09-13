@@ -39,23 +39,22 @@ def search_files():
 
     cmd = ['mdfind']
 
-    match_str = ""
+    full_match_str = "*"
+    case_match_str = "cd"
+    query_str = ""
     if full_match.get():
-        match_str = ""
+        full_match_str = ""
     if match_case.get():
-        match_str = "*"
+        case_match_str = ""
 
-    if match_case.get() or full_match.get():
-        # mdfind 'kMDItemFSName == "Test"'  # full match
-        query_str = f'kMDItemFSName == "{match_str}{query}{match_str}"'
-
+    if search_by_name.get():
+        query_str = f'kMDItemFSName == "{full_match_str}{query}{full_match_str}"'
+        query_str += f"{case_match_str}"
         cmd.append(query_str)
     else:
-        if search_by_name.get():
-            cmd.append('-name')
-            cmd.append(query)
-        else:
-            cmd.append(query)
+        query_str = f'kMDItemTextContent == "{full_match_str}{query}{full_match_str}"'
+        query_str += f"{case_match_str}"
+        cmd.append(query_str)
 
 
    # if exist
@@ -230,6 +229,7 @@ label_directory = tk.Label(root, text="Enter directory (optional):")
 # label_directory.pack(side='top', pady=5)
 
 directory_var = tk.StringVar()
+directory_var.set("~/")
 entry_directory = tk.Entry(root, width=50, textvariable=directory_var)
 # entry_directory.pack(side='top', pady=5)
 
