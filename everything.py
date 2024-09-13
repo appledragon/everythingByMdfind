@@ -6,6 +6,18 @@ import time
 import shutil
 import threading
 
+def center_window(root):
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    
+    window_width = root.winfo_reqwidth()
+    window_height = root.winfo_reqheight()
+    
+    position_right = int(screen_width/2 - window_width/2)
+    position_down = int(screen_height/2 - window_height/2)
+    
+    root.geometry(f"+{position_right}+{position_down}")
+
 def search_files():
     query = search_var.get()
     directory = directory_var.get()
@@ -14,7 +26,7 @@ def search_files():
         tree_result.delete(*tree_result.get_children())
         return
 
-   # check if dir exist
+    # check if dir exist
     if directory and not os.path.isdir(directory):
         if directory.startswith("~/"):
             directory = os.path.expanduser(directory)
@@ -26,11 +38,27 @@ def search_files():
             return
 
     cmd = ['mdfind']
-    if search_by_name.get():
-        cmd.append('-name')
-    cmd.append(query)
-    
-    # if exist
+
+    match_str = ""
+    if full_match.get():
+        match_str = ""
+    if match_case.get():
+        match_str = "*"
+
+    if match_case.get() or full_match.get():
+        # mdfind 'kMDItemFSName == "Test"'  # full match
+        query_str = f'kMDItemFSName == "{match_str}{query}{match_str}"'
+
+        cmd.append(query_str)
+    else:
+        if search_by_name.get():
+            cmd.append('-name')
+            cmd.append(query)
+        else:
+            cmd.append(query)
+
+
+   # if exist
     if directory:
         cmd.extend(['-onlyin', directory])
 
@@ -185,38 +213,64 @@ def start_search_thread():
 root = tk.Tk()
 root.title("everything by mdfind")
 
+root.update_idletasks()  
+center_window(root)
+
 # Create and place the widgets
 label_query = tk.Label(root, text="Enter search query:")
-label_query.pack(pady=5)
+# label_query.pack(side='top', pady=5)
 
 search_var = tk.StringVar()
 search_var.trace_add("write", on_search_var_change)
 entry_query = tk.Entry(root, width=50, textvariable=search_var)
-entry_query.pack(pady=5)
+# entry_query.pack(side='top', pady=5)
 
 # add input box for search in
 label_directory = tk.Label(root, text="Enter directory (optional):")
-label_directory.pack(pady=5)
+# label_directory.pack(side='top', pady=5)
 
 directory_var = tk.StringVar()
 entry_directory = tk.Entry(root, width=50, textvariable=directory_var)
-entry_directory.pack(pady=5)
+# entry_directory.pack(side='top', pady=5)
 
 # Add a checkbox for search by name option
 search_by_name = tk.BooleanVar()
 search_by_name.set(True)
 checkbox_name = tk.Checkbutton(root, text="Search by file name only", variable=search_by_name, command=on_search_var_change)
-checkbox_name.pack(pady=5)
+# checkbox_name.pack(side='right', pady=5)
+
+# Add a checkbox for match case option, after the search_by_name, in the same row
+match_case = tk.BooleanVar()
+match_case.set(False)
+checkbox_case = tk.Checkbutton(root, text="Match case", variable=match_case, command=on_search_var_change)
+# checkbox_case.pack(side='right', pady=5)
+
+full_match = tk.BooleanVar()
+full_match.set(False)
+checkbox_full_match = tk.Checkbutton(root, text="Full match", variable=full_match, command=on_search_var_change)
+
 
 columns = ('name', 'size', 'mod_time', 'path')
 col_names = {'name': 0, 'size': 1, 'mod_time': 2, 'path': 3}
 tree_result = ttk.Treeview(root, columns=columns, show='headings')
 
+label_query.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
+entry_query.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
+label_directory.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
+entry_directory.grid(row=1, column=1, padx=5, pady=5, sticky='nsew')
+checkbox_name.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+checkbox_case.grid(row=2, column=1, padx=200, pady=5, sticky='w')
+checkbox_full_match.grid(row=2, column=1, padx=300, pady=5, sticky='w')
+tree_result.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
+
+root.grid_rowconfigure(3, weight=1)
+root.grid_columnconfigure(1, weight=1)
+
 for col in columns:
     tree_result.heading(col, text=col.capitalize(), command=lambda _col=col_names[col]: sort_treeview(_col, False))
     tree_result.column(col, width=150 if col == 'name' else 90 if col == 'size' else 150 if col == 'mod_time' else 500, anchor='w' if col != 'size' else 'e')
 
-tree_result.pack(pady=5, fill=tk.BOTH, expand=True)
+# tree_result.pack(pady=5, fill=tk.BOTH, expand=True)
 
 context_menu = tk.Menu(root, tearoff=0)
 context_menu.add_command(label="Open with VSCode", command=open_with_vscode)
