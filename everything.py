@@ -198,6 +198,17 @@ def sort_treeview(col, reverse):
 
     tree_result.heading(col, command=lambda _col=col: sort_treeview(_col, not reverse))
 
+# pop up a tree view to select a directory
+def select_directory():
+    # from directory_var, get the current directory
+    current_dir = directory_var.get()
+    if not os.path.isdir(current_dir):
+        current_dir = os.path.expanduser("~/")
+    selected_dir = filedialog.askdirectory(initialdir=current_dir)
+    if selected_dir:
+        directory_var.set(selected_dir)
+        on_search_var_change()
+        
 def on_search_var_change(*args):
     global search_delay_id
     if search_delay_id:
@@ -230,9 +241,12 @@ label_directory = tk.Label(root, text="Enter directory (optional):")
 
 directory_var = tk.StringVar()
 directory_var.set("~/")
-entry_directory = tk.Entry(root, width=50, textvariable=directory_var)
+entry_directory = tk.Entry(root, width=62, textvariable=directory_var)
 # entry_directory.pack(side='top', pady=5)
 
+# add a directory selection button
+select_directory_button = tk.Button(root, text="Select directory", width=10,command=select_directory)
+        
 # Add a checkbox for search by name option
 search_by_name = tk.BooleanVar()
 search_by_name.set(True)
@@ -257,7 +271,8 @@ tree_result = ttk.Treeview(root, columns=columns, show='headings')
 label_query.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
 entry_query.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
 label_directory.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
-entry_directory.grid(row=1, column=1, padx=5, pady=5, sticky='nsew')
+entry_directory.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+select_directory_button.grid(row=1, column=1, padx=10,pady=5, sticky='e')
 checkbox_name.grid(row=2, column=1, padx=5, pady=5, sticky='w')
 checkbox_case.grid(row=2, column=1, padx=200, pady=5, sticky='w')
 checkbox_full_match.grid(row=2, column=1, padx=300, pady=5, sticky='w')
