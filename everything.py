@@ -5,6 +5,11 @@ from tkinter import ttk, messagebox, filedialog
 import time
 import shutil
 import threading
+import csv
+
+# Add global variables for cancellation
+current_search_process = None
+cancel_event = threading.Event()
 
 def center_window(root):
     screen_width = root.winfo_screenwidth()
@@ -19,6 +24,7 @@ def center_window(root):
     root.geometry(f"+{position_right}+{position_down}")
 
 def search_files():
+    global current_search_process
     query = search_var.get()
     directory = directory_var.get()
     
@@ -56,31 +62,50 @@ def search_files():
         query_str += f"{case_match_str}"
         cmd.append(query_str)
 
-
    # if exist
     if directory:
         cmd.extend(['-onlyin', directory])
 
     try:
-        result = subprocess.check_output(cmd)
-        file_paths = result.decode('utf-8').strip().split('\n')
-        if not file_paths or file_paths == ['']:
+        # Start subprocess with Popen for better control
+        current_search_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        files_info = []
+        total_files = 0
+
+        # Read output line by line
+        for line in current_search_process.stdout:
+            if cancel_event.is_set():
+                current_search_process.terminate()
+                return
+            path = line.strip()
+            if path:
+                if os.path.isfile(path):
+                    file_size = os.path.getsize(path)
+                    mod_time = os.path.getmtime(path)
+                    files_info.append((os.path.basename(path), file_size, mod_time, path))
+            total_files += 1
+            progress_var.set((total_files / 1000) * 100)  # Assuming a rough total
+            root.update_idletasks()
+
+        current_search_process.wait()
+        current_search_process = None
+
+        if not files_info:
             update_tree_view([])
+            progress_var.set(0)  # Reset progress bar
+            show_tooltip("Info", "No results found for the given search criteria.")  # Added notification
             return
+
     except Exception as e:
         show_tooltip("Error", str(e))
+        progress_var.set(0)  # Reset progress bar
         return
-    
-    # Collect file data
-    files_info = []
-    for path in file_paths:
-        if os.path.isfile(path):
-            file_size = os.path.getsize(path)
-            mod_time = os.path.getmtime(path)
-            files_info.append((os.path.basename(path), file_size, mod_time, path))
+    finally:
+        cancel_event.clear()
     
     # Update the GUI in the main thread
     update_tree_view(files_info)
+    progress_var.set(100)  # Set progress bar to complete
 
 def update_tree_view(files_info):
     tree_result.delete(*tree_result.get_children())
@@ -92,6 +117,7 @@ def update_tree_view(files_info):
         display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item[2]))
         file_data.append(item)
         tree_result.insert('', tk.END, values=(item[0], display_size, display_time, item[3]))
+    progress_var.set(0)  # Reset progress bar after update
 
 def show_tooltip(title, text):
     tooltip = tk.Toplevel(root)
@@ -213,11 +239,32 @@ def on_search_var_change(*args):
     global search_delay_id
     if search_delay_id:
         root.after_cancel(search_delay_id)
+    # Cancel ongoing search
+    if current_search_process and current_search_process.poll() is None:
+        cancel_event.set()
+        current_search_process.terminate()
     search_delay_id = root.after(500, start_search_thread)
 
 def start_search_thread():
     search_thread = threading.Thread(target=search_files)
     search_thread.start()
+
+def export_to_csv():
+    if not file_data:
+        show_tooltip("Warning", "No data to export.")
+        return
+    file_path = filedialog.asksaveasfilename(defaultextension=".csv",
+                                             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+    if file_path:
+        try:
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
+                for item in file_data:
+                    writer.writerow(item)
+            show_tooltip("Success", f"Results exported to {file_path}")
+        except Exception as e:
+            show_tooltip("Error", str(e))
 
 # Create the main application window
 root = tk.Tk()
@@ -295,9 +342,20 @@ context_menu.add_command(label="Copy full path with file name", command=copy_ful
 context_menu.add_command(label="Copy path without file name", command=copy_path_only)
 context_menu.add_command(label="Copy file name only", command=copy_file_name_only)
 context_menu.add_command(label="Open in finder", command=open_path_in_finder)
+context_menu.add_command(label="Export to CSV", command=export_to_csv)
 
 tree_result.bind("<Button-2>", on_right_click)
 tree_result.bind("<Double-1>", on_double_click)
 
 search_delay_id = None
+
+# Add Progress Bar
+progress_var = tk.DoubleVar()
+progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100)
+progress_bar.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky='ew')
+
+# Add Export to CSV Button
+export_button = tk.Button(root, text="Export to CSV", command=export_to_csv)
+export_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky='e')
+
 root.mainloop()
