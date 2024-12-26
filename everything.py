@@ -7,355 +7,347 @@ import shutil
 import threading
 import csv
 
-# Add global variables for cancellation
-current_search_process = None
-cancel_event = threading.Event()
-
-def center_window(root):
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    
-    window_width = root.winfo_reqwidth()
-    window_height = root.winfo_reqheight()
-    
-    position_right = int(screen_width/2 - window_width/2)
-    position_down = int(screen_height/2 - window_height/2)
-    
-    root.geometry(f"+{position_right}+{position_down}")
-
-def search_files():
-    global current_search_process
-    query = search_var.get()
-    directory = directory_var.get()
-    
-    if not query:
-        tree_result.delete(*tree_result.get_children())
-        return
-
-    # check if dir exist
-    if directory and not os.path.isdir(directory):
-        if directory.startswith("~/"):
-            directory = os.path.expanduser(directory)
-            if not os.path.isdir(directory):
-                show_tooltip("Warning", f"The directory '{directory}' does not exist.")
-                return
-        else:
-            show_tooltip("Warning", f"The directory '{directory}' does not exist.")
-            return
-
-    cmd = ['mdfind']
-
-    full_match_str = "*"
-    case_match_str = "cd"
-    query_str = ""
-    if full_match.get():
-        full_match_str = ""
-    if match_case.get():
-        case_match_str = ""
-
-    if search_by_name.get():
-        query_str = f'kMDItemFSName == "{full_match_str}{query}{full_match_str}"'
-        query_str += f"{case_match_str}"
-        cmd.append(query_str)
-    else:
-        query_str = f'kMDItemTextContent == "{full_match_str}{query}{full_match_str}"'
-        query_str += f"{case_match_str}"
-        cmd.append(query_str)
-
-   # if exist
-    if directory:
-        cmd.extend(['-onlyin', directory])
-
-    try:
-        # Start subprocess with Popen for better control
-        current_search_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        files_info = []
-        total_files = 0
-
-        # Read output line by line
-        for line in current_search_process.stdout:
-            if cancel_event.is_set():
-                current_search_process.terminate()
-                return
-            path = line.strip()
-            if path:
-                if os.path.isfile(path):
-                    file_size = os.path.getsize(path)
-                    mod_time = os.path.getmtime(path)
-                    files_info.append((os.path.basename(path), file_size, mod_time, path))
-            total_files += 1
-            progress_var.set((total_files / 1000) * 100)  # Assuming a rough total
-            root.update_idletasks()
-
-        current_search_process.wait()
-        current_search_process = None
-
-        if not files_info:
-            update_tree_view([])
-            progress_var.set(0)  # Reset progress bar
-            show_tooltip("Info", "No results found for the given search criteria.")  # Added notification
-            return
-
-    except Exception as e:
-        show_tooltip("Error", str(e))
-        progress_var.set(0)  # Reset progress bar
-        return
-    finally:
-        cancel_event.clear()
-    
-    # Update the GUI in the main thread
-    update_tree_view(files_info)
-    progress_var.set(100)  # Set progress bar to complete
-
-def update_tree_view(files_info):
-    tree_result.delete(*tree_result.get_children())
-    global file_data
-    file_data = []
-
-    for item in files_info:
-        display_size = format_size(item[1])
-        display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item[2]))
-        file_data.append(item)
-        tree_result.insert('', tk.END, values=(item[0], display_size, display_time, item[3]))
-    progress_var.set(0)  # Reset progress bar after update
-
-def show_tooltip(title, text):
-    tooltip = tk.Toplevel(root)
-    # set tooltip window on top of the main window, in the center
-    x = root.winfo_x() + root.winfo_width() // 2 - 100
-    y = root.winfo_y() + root.winfo_height() // 2 - 25
-    tooltip.geometry(f"+{x}+{y}")
-    tooltip.title(title)
-    # tooltip.overrideredirect(True)  # remove window decorations
-    # tooltip.configure(bg='black')  # set background color to black
-    label = tk.Label(tooltip, text=text)  # set text color to white
-    label.pack(pady=10)
-    tooltip.after(1000, tooltip.destroy)
-
 def format_size(size):
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size < 1024:
             return f"{size:.2f} {unit}"
         size /= 1024
 
-def open_with_vscode():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    try:
-        subprocess.run(['/Applications/Visual Studio Code.app/Contents/MacOS/Electron', file_path], check=True)
-    except Exception as e:
-        show_tooltip("Error", f"Could not open with VSCode: {str(e)}")
 
-def on_double_click(event):
-    open_with_vscode()
+class MdfindApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Everything by mdfind")
 
-def on_right_click(event):
-    row_id = tree_result.identify_row(event.y)
-    if row_id:
-        tree_result.selection_set(row_id)
-        context_menu.post(event.x_root, event.y_root)
-    else:
-        context_menu.unpost()
+        self.current_search_process = None
+        self.cancel_event = threading.Event()
+        self.search_delay_id = None
+        self.file_data = []
 
-def delete_file():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    if messagebox.askyesno("Delete", f"Are you sure you want to delete '{file_path}'?"):
+        self.search_var = tk.StringVar()
+        self.directory_var = tk.StringVar(value="~/")
+        self.search_by_name = tk.BooleanVar(value=True)
+        self.match_case = tk.BooleanVar(value=False)
+        self.full_match = tk.BooleanVar(value=False)
+        self.progress_var = tk.DoubleVar(value=0.0)
+
+        self._setup_ui()
+        self._center_window()
+
+    def _setup_ui(self):
+        label_query = tk.Label(self, text="Search Query:")
+        label_query.grid(row=0, column=0, padx=5, pady=5, sticky='e')
+
+        self.search_var.trace_add("write", self._on_search_var_change)
+        entry_query = tk.Entry(self, width=50, textvariable=self.search_var)
+        entry_query.grid(row=0, column=1, padx=5, pady=5, sticky='ew')
+
+        label_directory = tk.Label(self, text="Directory (optional):")
+        label_directory.grid(row=1, column=0, padx=5, pady=5, sticky='e')
+
+        entry_directory = tk.Entry(self, width=50, textvariable=self.directory_var)
+        entry_directory.grid(row=1, column=1, padx=5, pady=5, sticky='ew')
+
+        select_directory_button = tk.Button(self, text="Select Dir", width=10, command=self._select_directory)
+        select_directory_button.grid(row=1, column=2, padx=5, pady=5, sticky='w')
+
+        checkbox_name = tk.Checkbutton(self, text="Search by file name only", variable=self.search_by_name, 
+                                       command=self._on_search_var_change)
+        checkbox_name.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+
+        checkbox_case = tk.Checkbutton(self, text="Match case", variable=self.match_case,
+                                       command=self._on_search_var_change)
+        checkbox_case.grid(row=2, column=1, padx=200, pady=5, sticky='w')
+
+        checkbox_full_match = tk.Checkbutton(self, text="Full match", variable=self.full_match, 
+                                             command=self._on_search_var_change)
+        checkbox_full_match.grid(row=2, column=1, padx=300, pady=5, sticky='w')
+
+        columns = ('name', 'size', 'mod_time', 'path')
+        self.tree_result = ttk.Treeview(self, columns=columns, show='headings')
+        self.tree_result.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky='nsew')
+
+        col_map = {'name': 0, 'size': 1, 'mod_time': 2, 'path': 3}
+        for col in columns:
+            self.tree_result.heading(col, text=col.capitalize(), 
+                command=lambda c=col_map[col]: self._sort_treeview(c, False))
+            if col == 'name':
+                self.tree_result.column(col, width=200, anchor='w')
+            elif col == 'size':
+                self.tree_result.column(col, width=90, anchor='e')
+            elif col == 'mod_time':
+                self.tree_result.column(col, width=150, anchor='w')
+            else:
+                self.tree_result.column(col, width=400, anchor='w')
+
+        self.tree_result.bind("<Double-1>", self._on_double_click)
+        self.tree_result.bind("<Button-2>", self._on_right_click)
+        self.tree_result.bind("<Button-3>", self._on_right_click)
+
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Open with VSCode", command=self._open_with_vscode)
+        self.context_menu.add_command(label="Delete", command=self._delete_file)
+        self.context_menu.add_command(label="Copy", command=self._copy_file)
+        self.context_menu.add_command(label="Copy full path with file name", command=self._copy_full_path)
+        self.context_menu.add_command(label="Copy path without file name", command=self._copy_path_only)
+        self.context_menu.add_command(label="Copy file name only", command=self._copy_file_name_only)
+        self.context_menu.add_command(label="Open in Finder", command=self._open_in_finder)
+        self.context_menu.add_command(label="Export to CSV", command=self._export_to_csv)
+
+        self.progress_bar = ttk.Progressbar(self, variable=self.progress_var, maximum=100)
+        self.progress_bar.grid(row=4, column=0, columnspan=3, padx=5, pady=5, sticky='ew')
+
+        export_button = tk.Button(self, text="Export to CSV", command=self._export_to_csv)
+        export_button.grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky='e')
+
+        self.grid_rowconfigure(3, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+    def _center_window(self):
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = self.winfo_reqwidth()
+        window_height = self.winfo_reqheight()
+        pos_x = int((screen_width - window_width) / 2)
+        pos_y = int((screen_height - window_height) / 2)
+        self.geometry(f"+{pos_x}+{pos_y}")
+
+    def _on_search_var_change(self, *args):
+        if self.search_delay_id:
+            self.after_cancel(self.search_delay_id)
+        if self.current_search_process and self.current_search_process.poll() is None:
+            self.cancel_event.set()
+            self.current_search_process.terminate()
+
+        self.search_delay_id = self.after(500, self._start_search_thread)
+
+    def _start_search_thread(self):
+        search_thread = threading.Thread(target=self._search_files, daemon=True)
+        search_thread.start()
+
+    def _search_files(self):
+        self.progress_var.set(0)
+        query = self.search_var.get().strip()
+        directory = self.directory_var.get().strip()
+
+        if not query:
+            self._update_tree_view([])
+            return
+
+        if directory and directory.startswith("~/"):
+            directory = os.path.expanduser(directory)
+
+        if directory and not os.path.isdir(directory):
+            self._show_tooltip("Warning", f"The directory '{directory}' does not exist.")
+            return
+
+        cmd = ["mdfind"]
+        full_match_str = "*" if not self.full_match.get() else ""
+        case_match_str = "cd" if not self.match_case.get() else ""
+        if self.search_by_name.get():
+            query_str = f'kMDItemFSName == "{full_match_str}{query}{full_match_str}"{case_match_str}'
+        else:
+            query_str = f'kMDItemTextContent == "{full_match_str}{query}{full_match_str}"{case_match_str}'
+        cmd.append(query_str)
+
+        if directory:
+            cmd.extend(["-onlyin", directory])
+
+        self.cancel_event.clear()
+        self.current_search_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        files_info = []
+
         try:
-            os.remove(file_path)
-            tree_result.delete(selected_item)
-            show_tooltip("Deleted", f"File '{file_path}' deleted successfully.")
+            for idx, line in enumerate(self.current_search_process.stdout, start=1):
+                if self.cancel_event.is_set():
+                    self.current_search_process.terminate()
+                    return
+                path = line.strip()
+                if path and os.path.isfile(path):
+                    size_ = os.path.getsize(path)
+                    mtime = os.path.getmtime(path)
+                    files_info.append((os.path.basename(path), size_, mtime, path))
+
+                if idx % 10 == 0:
+                    self.progress_var.set(min(100, idx % 100))
+                    self.update_idletasks()
+
+            self.current_search_process.wait()
+
+            if not files_info:
+                self._update_tree_view([])
+                self._show_tooltip("Info", "No results found.")
+            else:
+                self._update_tree_view(files_info)
         except Exception as e:
-            show_tooltip("Error", str(e))
+            self._show_tooltip("Error", str(e))
+        finally:
+            self.cancel_event.clear()
+            self.current_search_process = None
+            self.progress_var.set(0)
 
-def copy_file():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    destination = filedialog.askdirectory()
-    if destination:
+    def _update_tree_view(self, files_info):
+        self.tree_result.delete(*self.tree_result.get_children())
+        self.file_data = []
+
+        for item in files_info:
+            display_size = format_size(item[1])
+            display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item[2]))
+            self.file_data.append(item)
+            self.tree_result.insert('', tk.END, values=(item[0], display_size, display_time, item[3]))
+
+    def _sort_treeview(self, col, reverse):
+        if not self.file_data:
+            return
+        # col = 0: name, 1: size, 2: mod_time, 3: path
+        self.file_data.sort(key=lambda x: x[col], reverse=reverse)
+
+        self._update_tree_view(self.file_data)
+        self.tree_result.heading(self.tree_result["columns"][col], 
+                                 command=lambda: self._sort_treeview(col, not reverse))
+
+    def _show_tooltip(self, title, text):
+        tooltip = tk.Toplevel(self)
+        tooltip.title(title)
+        x = self.winfo_x() + self.winfo_width() // 2 - 100
+        y = self.winfo_y() + self.winfo_height() // 2 - 25
+        tooltip.geometry(f"200x50+{x}+{y}")
+
+        label = tk.Label(tooltip, text=text, padx=10, pady=10)
+        label.pack()
+        tooltip.after(1000, tooltip.destroy)
+
+    def _on_double_click(self, event):
+        self._open_with_vscode()
+
+    def _on_right_click(self, event):
+        row_id = self.tree_result.identify_row(event.y)
+        if row_id:
+            self.tree_result.selection_set(row_id)
+            self.context_menu.post(event.x_root, event.y_root)
+        else:
+            self.context_menu.unpost()
+
+    def _open_with_vscode(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
         try:
-            shutil.copy(file_path, destination)
-            messagebox.showinfo("Copied", f"File '{file_path}' copied to '{destination}'.")
+            with open(os.devnull, 'w') as devnull:
+                subprocess.run(
+                    ["/Applications/Visual Studio Code.app/Contents/MacOS/Electron", selected],
+                    check=True,
+                    stdout=devnull,
+                    stderr=devnull
+                )
+        except Exception as e:
+            self._show_tooltip("Error", f"Could not open with VSCode: {e}")
+
+    def _open_in_finder(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
+        try:
+            subprocess.run(["open", "-R", selected], check=True)
+        except Exception as e:
+            self._show_tooltip("Error", f"Could not open Finder: {e}")
+
+    def _delete_file(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
+        if messagebox.askyesno("Delete", f"Are you sure you want to delete '{selected}'?"):
+            try:
+                os.remove(selected)
+                sel_item = self.tree_result.selection()[0]
+                self.tree_result.delete(sel_item)
+                self._show_tooltip("Deleted", f"File '{selected}' deleted.")
+            except Exception as e:
+                self._show_tooltip("Error", str(e))
+
+    def _copy_file(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
+        destination = filedialog.askdirectory()
+        if not destination:
+            return
+        try:
+            shutil.copy(selected, destination)
+            messagebox.showinfo("Copied", f"File '{selected}' copied to '{destination}'.")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-def copy_full_path():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    root.clipboard_clear()
-    root.clipboard_append(file_path)
-    root.update()
-    show_tooltip("Copied", "Full path copied to clipboard.")
+    def _copy_full_path(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(selected)
+        self._show_tooltip("Copied", "Full path copied to clipboard.")
 
-def copy_file_name_only():
-    selected_item = tree_result.selection()[0]
-    file_name = tree_result.item(selected_item, 'values')[0]
-    root.clipboard_clear()
-    root.clipboard_append(file_name)
-    root.update()
-    show_tooltip("Copied", "File name copied to clipboard.")
+    def _copy_file_name_only(self):
+        selected_item = self._get_selected_item()
+        if not selected_item:
+            return
+        file_name = selected_item[0]
+        self.clipboard_clear()
+        self.clipboard_append(file_name)
+        self._show_tooltip("Copied", "File name copied to clipboard.")
 
-def copy_path_only():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    directory_path = os.path.dirname(file_path)
-    root.clipboard_clear()
-    root.clipboard_append(directory_path)
-    root.update()
-    show_tooltip("Copied", "Directory path copied to clipboard.")
+    def _copy_path_only(self):
+        selected = self._get_selected_file_path()
+        if not selected:
+            return
+        directory_path = os.path.dirname(selected)
+        self.clipboard_clear()
+        self.clipboard_append(directory_path)
+        self._show_tooltip("Copied", "Directory path copied to clipboard.")
 
-def open_path_in_finder():
-    selected_item = tree_result.selection()[0]
-    file_path = tree_result.item(selected_item, 'values')[3]
-    try:
-        subprocess.run(['open', '-R', file_path], check=True)
-    except Exception as e:
-        show_tooltip("Error", f"Could not open Finder: {str(e)}")
+    def _get_selected_file_path(self):
+        sel = self.tree_result.selection()
+        if not sel:
+            return None
+        return self.tree_result.item(sel[0], 'values')[3]
 
-def sort_treeview(col, reverse):
-    global file_data
-    file_data.sort(key=lambda x: x[col], reverse=reverse)
-    
-    tree_result.delete(*tree_result.get_children())
-    for item in file_data:
-        display_size = format_size(item[1])
-        display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item[2]))
-        tree_result.insert('', tk.END, values=(item[0], display_size, display_time, item[3]))
+    def _get_selected_item(self):
+        sel = self.tree_result.selection()
+        if not sel:
+            return None
+        return self.tree_result.item(sel[0], 'values')
 
-    tree_result.heading(col, command=lambda _col=col: sort_treeview(_col, not reverse))
+    def _select_directory(self):
+        current_dir = self.directory_var.get()
+        if not os.path.isdir(os.path.expanduser(current_dir)):
+            current_dir = os.path.expanduser("~/")
 
-# pop up a tree view to select a directory
-def select_directory():
-    # from directory_var, get the current directory
-    current_dir = directory_var.get()
-    if not os.path.isdir(current_dir):
-        current_dir = os.path.expanduser("~/")
-    selected_dir = filedialog.askdirectory(initialdir=current_dir)
-    if selected_dir:
-        directory_var.set(selected_dir)
-        on_search_var_change()
-        
-def on_search_var_change(*args):
-    global search_delay_id
-    if search_delay_id:
-        root.after_cancel(search_delay_id)
-    # Cancel ongoing search
-    if current_search_process and current_search_process.poll() is None:
-        cancel_event.set()
-        current_search_process.terminate()
-    search_delay_id = root.after(500, start_search_thread)
+        selected_dir = filedialog.askdirectory(initialdir=current_dir)
+        if selected_dir:
+            self.directory_var.set(selected_dir)
+            self._on_search_var_change()
 
-def start_search_thread():
-    search_thread = threading.Thread(target=search_files)
-    search_thread.start()
-
-def export_to_csv():
-    if not file_data:
-        show_tooltip("Warning", "No data to export.")
-        return
-    file_path = filedialog.asksaveasfilename(defaultextension=".csv",
-                                             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-    if file_path:
+    def _export_to_csv(self):
+        if not self.file_data:
+            self._show_tooltip("Warning", "No data to export.")
+            return
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if not file_path:
+            return
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
-                for item in file_data:
+                for item in self.file_data:
                     writer.writerow(item)
-            show_tooltip("Success", f"Results exported to {file_path}")
+            self._show_tooltip("Success", f"Results exported to {file_path}")
         except Exception as e:
-            show_tooltip("Error", str(e))
-
-# Create the main application window
-root = tk.Tk()
-root.title("everything by mdfind")
-
-root.update_idletasks()  
-center_window(root)
-
-# Create and place the widgets
-label_query = tk.Label(root, text="Enter search query:")
-# label_query.pack(side='top', pady=5)
-
-search_var = tk.StringVar()
-search_var.trace_add("write", on_search_var_change)
-entry_query = tk.Entry(root, width=50, textvariable=search_var)
-# entry_query.pack(side='top', pady=5)
-
-# add input box for search in
-label_directory = tk.Label(root, text="Enter directory (optional):")
-# label_directory.pack(side='top', pady=5)
-
-directory_var = tk.StringVar()
-directory_var.set("~/")
-entry_directory = tk.Entry(root, width=62, textvariable=directory_var)
-# entry_directory.pack(side='top', pady=5)
-
-# add a directory selection button
-select_directory_button = tk.Button(root, text="Select directory", width=10,command=select_directory)
-        
-# Add a checkbox for search by name option
-search_by_name = tk.BooleanVar()
-search_by_name.set(True)
-checkbox_name = tk.Checkbutton(root, text="Search by file name only", variable=search_by_name, command=on_search_var_change)
-# checkbox_name.pack(side='right', pady=5)
-
-# Add a checkbox for match case option, after the search_by_name, in the same row
-match_case = tk.BooleanVar()
-match_case.set(False)
-checkbox_case = tk.Checkbutton(root, text="Match case", variable=match_case, command=on_search_var_change)
-# checkbox_case.pack(side='right', pady=5)
-
-full_match = tk.BooleanVar()
-full_match.set(False)
-checkbox_full_match = tk.Checkbutton(root, text="Full match", variable=full_match, command=on_search_var_change)
+            self._show_tooltip("Error", str(e))
 
 
-columns = ('name', 'size', 'mod_time', 'path')
-col_names = {'name': 0, 'size': 1, 'mod_time': 2, 'path': 3}
-tree_result = ttk.Treeview(root, columns=columns, show='headings')
-
-label_query.grid(row=0, column=0, padx=5, pady=5, sticky='nsew')
-entry_query.grid(row=0, column=1, padx=5, pady=5, sticky='nsew')
-label_directory.grid(row=1, column=0, padx=5, pady=5, sticky='nsew')
-entry_directory.grid(row=1, column=1, padx=5, pady=5, sticky='w')
-select_directory_button.grid(row=1, column=1, padx=10,pady=5, sticky='e')
-checkbox_name.grid(row=2, column=1, padx=5, pady=5, sticky='w')
-checkbox_case.grid(row=2, column=1, padx=200, pady=5, sticky='w')
-checkbox_full_match.grid(row=2, column=1, padx=300, pady=5, sticky='w')
-tree_result.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky='nsew')
-
-root.grid_rowconfigure(3, weight=1)
-root.grid_columnconfigure(1, weight=1)
-
-for col in columns:
-    tree_result.heading(col, text=col.capitalize(), command=lambda _col=col_names[col]: sort_treeview(_col, False))
-    tree_result.column(col, width=150 if col == 'name' else 90 if col == 'size' else 150 if col == 'mod_time' else 500, anchor='w' if col != 'size' else 'e')
-
-# tree_result.pack(pady=5, fill=tk.BOTH, expand=True)
-
-context_menu = tk.Menu(root, tearoff=0)
-context_menu.add_command(label="Open with VSCode", command=open_with_vscode)
-context_menu.add_command(label="Delete", command=delete_file)
-context_menu.add_command(label="Copy", command=copy_file)
-context_menu.add_command(label="Copy full path with file name", command=copy_full_path)
-context_menu.add_command(label="Copy path without file name", command=copy_path_only)
-context_menu.add_command(label="Copy file name only", command=copy_file_name_only)
-context_menu.add_command(label="Open in finder", command=open_path_in_finder)
-context_menu.add_command(label="Export to CSV", command=export_to_csv)
-
-tree_result.bind("<Button-2>", on_right_click)
-tree_result.bind("<Double-1>", on_double_click)
-
-search_delay_id = None
-
-# Add Progress Bar
-progress_var = tk.DoubleVar()
-progress_bar = ttk.Progressbar(root, variable=progress_var, maximum=100)
-progress_bar.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky='ew')
-
-# Add Export to CSV Button
-export_button = tk.Button(root, text="Export to CSV", command=export_to_csv)
-export_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky='e')
-
-root.mainloop()
+if __name__ == "__main__":
+    app = MdfindApp()
+    app.mainloop()
