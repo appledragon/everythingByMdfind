@@ -159,11 +159,12 @@ class MdfindApp(QMainWindow):
         help_menu = menubar.addMenu('Help')
         about_action = help_menu.addAction('About')
         about_action.triggered.connect(self.show_about_dialog)
-        # Added clear history action in the Help menu
-        clear_history_action = help_menu.addAction('Clear History')
+
+        # Add a "History" menu
+        history_menu = menubar.addMenu('History')
+        clear_history_action = history_menu.addAction('Clear History')
         clear_history_action.triggered.connect(self.clear_history)
-        # New: Enable History toggle in Help menu
-        enable_history_action = help_menu.addAction("Enable History")
+        enable_history_action = history_menu.addAction("Enable History")
         enable_history_action.setCheckable(True)
         enable_history_action.setChecked(self.history_enabled)
         enable_history_action.triggered.connect(self.toggle_history)
