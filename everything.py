@@ -982,6 +982,61 @@ class MdfindApp(QMainWindow):
             QSplitter::handle:hover {
                 background-color: #c0c0c0;
             }
+            QMenuBar {
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #ffffff, stop: 1 #f0f0f0
+                );
+                color: #000000;
+            }
+            QMenuBar::item {
+                background-color: transparent;
+                color: #000000;
+            }
+            QMenuBar::item:selected {
+                background-color: #e0e0e0;
+            }
+            QMenu {
+                background-color: #ffffff;
+                color: #000000;
+                border: 1px solid #c0c0c0;
+            }
+            QMenu::item:selected {
+                background-color: #e0e0e0;
+            }
+            QMessageBox {
+                background-color: #ffffff;
+                color: #000000;
+            }
+            QMessageBox QLabel {
+                color: #000000;
+                background-color: transparent;
+            }
+            QMessageBox QPushButton {
+                background-color: #e0e0e0;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 15px;
+                color: #000000;
+                min-width: 80px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #d0d0d0;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f0;
+                color: #000000;
+                padding: 4px;
+                border: none;
+                border-right: 1px solid #c0c0c0;
+                border-bottom: 1px solid #c0c0c0;
+            }
+            QHeaderView::section:hover {
+                background-color: #e0e0e0;
+            }
+            QHeaderView::section:checked {
+                background-color: #e0e0e0;
+            }
         """)
     
     def set_dark_mode(self):
