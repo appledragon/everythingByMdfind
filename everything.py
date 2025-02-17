@@ -1065,6 +1065,19 @@ class MdfindApp(QMainWindow):
             QMessageBox QPushButton:hover {
                 background-color: #707070;
             }
+            QHeaderView::section {
+                background-color: #3c3f41;
+                color: #f0f0f0;
+                padding: 4px;
+                border: none;
+                border-right: 1px solid #606060;
+            }
+            QHeaderView::section:hover {
+                background-color: #505050;
+            }
+            QHeaderView::section:checked {
+                background-color: #505050;
+            }
         """)
 
     def toggle_dark_mode(self, checked):
