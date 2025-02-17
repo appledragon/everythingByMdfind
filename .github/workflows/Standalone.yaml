@@ -1,0 +1,62 @@
+name: Build Standalone Application
+
+on:
+  # 手动触发
+  workflow_dispatch:
+
+# 关键：给 GITHUB_TOKEN 写入（contents: write）权限，否则无法创建发布
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    runs-on: macos-latest
+    steps:
+      # 1. 检出仓库代码
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      # 2. 设置 Python 3.9
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      # 3. 安装依赖
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # 4. 使用 PyInstaller 打包
+      - name: Build standalone application
+        run: |
+          # 生成单文件可执行程序
+          pyinstaller --onefile everything.py
+          # 将 dist 目录打包成 zip 以便上传
+          zip -r everything-dist.zip dist
+
+      # 5. 创建 GitHub Release
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: 'v0.1.0'
+          release_name: 'v0.1.0'
+          draft: false
+          prerelease: false
+
+      # 6. 上传打包好的 zip 文件到 Release
+      - name: Upload release asset
+        id: upload_release_asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # <-- Important for authentication!
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-dist.zip
+          asset_name: everything-dist.zip
+          asset_content_type: application/zip
