@@ -16,7 +16,7 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
 *   **Directory-Specific Search:** Limit your search to a specific directory for focused results.
 *   **Sortable Results:** Organize search results by name, size, date modified, or path.
 *   **Multi-File Operations:** Perform actions on multiple files simultaneously:
-    *   Multi-select files using Shift or Control (⌃) keys.
+    *   Multi-select files using Shift or Command (⌘) keys.
     *   Batch operations: Open, Delete, Copy, Move.
     *   Single-file operations: Open with VSCode, Copy paths.
     *   Open files in Finder.
