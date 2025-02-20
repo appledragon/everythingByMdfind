@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QMovie, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
 DEBOUNCE_DELAY = 800
@@ -75,36 +76,48 @@ class SearchWorker(QThread):
     result_signal = pyqtSignal(list)
     error_signal = pyqtSignal(str)
     
-    def __init__(self, query, directory, search_by_file_name, match_case, full_match):
+    def __init__(self, query, directory, search_by_file_name, match_case, full_match, extra_clause=None):
         super().__init__()
         self.query = query
         self.directory = directory
         self.search_by_file_name = search_by_file_name
         self.match_case = match_case
         self.full_match = full_match
+        self.extra_clause = extra_clause
         self._is_running = True
         self.process = None
 
     def run(self):
         files_info = []
         idx = 0
-
         cmd = ["mdfind"]
 
-        # Construct search query pattern
+
         full_match_str = "" if self.full_match else "*"
         case_modifier = "" if self.match_case else "cd"
-
         if self.search_by_file_name:
             query_str = f'kMDItemFSName == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+            if self.extra_clause is not None:
+                query_str += f" && {self.extra_clause}"
         else:
-            query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+            if self.query != "":
+                query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+                if self.extra_clause is not None:
+                    query_str += f" && {self.extra_clause}"
+            else:
+                if self.extra_clause is not None:
+                    query_str = self.extra_clause
+                else:
+                    return
+
+                    
         cmd.append(query_str)
 
         if self.directory:
             dir_expanded = os.path.expanduser(self.directory)
             cmd.extend(["-onlyin", dir_expanded])
 
+        # print(f"Running mdfind with query: {cmd}")
         try:
             self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         except Exception as e:
@@ -131,6 +144,7 @@ class SearchWorker(QThread):
             self.result_signal.emit(files_info)
         except Exception as e:
             self.error_signal.emit(str(e))
+            self.stop()
         finally:
             self.progress_signal.emit(0)
 
@@ -184,11 +198,19 @@ class MdfindApp(QMainWindow):
             self.set_dark_mode()
         else:
             self.set_non_dark_mode()
+        
+        # === New: Bookmarks Menu ===
+        bookmarks_menu = menubar.addMenu("Bookmarks")
+        bookmarks_menu.addAction("Large Files", self.bookmark_large_files)
+        bookmarks_menu.addAction("Video Files", self.bookmark_videos)
+        bookmarks_menu.addAction("Audio Files", self.bookmark_audio)
+        bookmarks_menu.addAction("Images", self.bookmark_images)
+        bookmarks_menu.addAction("Archives", self.bookmark_archives)
+        
         # Search thread variables
         self.search_worker = None
         self.all_file_data = []
         self.file_data = []
-        self.ignore_no_results = False
 
         # ======= Main layout: QSplitter, left for search/list and right for preview ===========
         splitter = QSplitter(self)
@@ -206,7 +228,7 @@ class MdfindApp(QMainWindow):
         self.lbl_items_found = QLabel("0 items found")
 
         form_layout.addWidget(lbl_query)
-        form_layout.addWidget(self.edit_query, 3)
+        form_layout.addWidget(self.edit_query, 4)
         form_layout.addWidget(self.lbl_items_found, 1)
         left_layout.addLayout(form_layout)
 
@@ -219,7 +241,7 @@ class MdfindApp(QMainWindow):
         btn_select_dir.clicked.connect(self.select_directory)
 
         form_layout2.addWidget(lbl_dir)
-        form_layout2.addWidget(self.edit_dir, 3)
+        form_layout2.addWidget(self.edit_dir, 4)
         form_layout2.addWidget(btn_select_dir, 1)
         left_layout.addLayout(form_layout2)
 
@@ -233,19 +255,19 @@ class MdfindApp(QMainWindow):
         self.edit_max_size = QLineEdit()
         lbl_extension = QLabel("File Extension:")
         self.edit_extension = QLineEdit()
-        self.edit_extension.setPlaceholderText(" e.g., pdf;docx")
+        self.edit_extension.setPlaceholderText("pdf;docx;xls")
 
         self.chk_file_name = QCheckBox("Search by File Name")
         self.chk_file_name.setChecked(True)
         self.chk_match_case = QCheckBox("Match Case")
         self.chk_full_match = QCheckBox("Full Match")
 
-        adv_layout.addWidget(lbl_min_size, 1)
-        adv_layout.addWidget(self.edit_min_size, 2)
-        adv_layout.addWidget(lbl_max_size, 1)
-        adv_layout.addWidget(self.edit_max_size, 2)
-        adv_layout.addWidget(lbl_extension, 1)
-        adv_layout.addWidget(self.edit_extension, 2)
+        adv_layout.addWidget(lbl_min_size, 2)
+        adv_layout.addWidget(self.edit_min_size, 5)
+        adv_layout.addWidget(lbl_max_size, 2)
+        adv_layout.addWidget(self.edit_max_size, 5)
+        adv_layout.addWidget(lbl_extension, 2)
+        adv_layout.addWidget(self.edit_extension, 5)
         adv_layout.addWidget(self.chk_file_name, 2)
         adv_layout.addWidget(self.chk_match_case, 2)
         adv_layout.addWidget(self.chk_full_match, 2)
@@ -262,8 +284,8 @@ class MdfindApp(QMainWindow):
         self.tree.setSortingEnabled(False)
         self.tree.setColumnWidth(0, 200)
         self.tree.setColumnWidth(1, 80)
-        self.tree.setColumnWidth(2, 150)
-        self.tree.setColumnWidth(3, 400)
+        self.tree.setColumnWidth(2, 130)
+        self.tree.setColumnWidth(3, 350)
         self.tree.header().setSectionsClickable(True)
         self.tree.header().setSortIndicatorShown(True)
         self.tree.header().sectionClicked.connect(self.on_header_clicked)
@@ -305,14 +327,15 @@ class MdfindApp(QMainWindow):
         # 2) Image Preview: Fixed size, scale manually if needed
         self.image_label = QLabel()
         self.image_label.setFixedSize(500, 400)
-        self.image_label.setScaledContents(False)
+        self.image_label.setScaledContents(True)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 3) Video Preview: Fixed size with aspect ratio maintained
         self.video_widget = QVideoWidget()
         self.video_widget.setFixedSize(500, 400)
-        # If supported, try to maintain aspect ratio:
-        self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)  # Available in some versions
+        # assert hasattr(QVideoWidget, "setAspectRatioMode"), "need PyQt6 >= 6.2.0"
+        if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
+            self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         self.audio_output = QAudioOutput()
         self.media_player = QMediaPlayer()
         self.media_player.setVideoOutput(self.video_widget)
@@ -394,9 +417,9 @@ class MdfindApp(QMainWindow):
         self.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
 
         # Recognizable extensions
-        self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+        self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
         self.video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".mpeg"}
-
+        
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
         # if preview is not visible, do nothing
@@ -434,23 +457,43 @@ class MdfindApp(QMainWindow):
         _, ext = os.path.splitext(path)
         ext = ext.lower()
 
-        if ext in self.image_extensions:
-            pixmap = QPixmap(path)
-            # Scale down using KeepAspectRatio if pixmap is larger than image_label
-            if (pixmap.width() > self.image_label.width()) or (pixmap.height() > self.image_label.height()):
-                pixmap = pixmap.scaled(
-                    self.image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
+        if ext in self.image_extensions or ext == ".svg":
+            # Support for GIF preview added
+            if ext == ".gif":
+                movie = QMovie(path)
+                self.image_label.setMovie(movie)
+                movie.start()
+                # Show resolution info from the current frame if available
+                pix = movie.currentPixmap()
+                self.media_info.appendPlainText(
+                    f"Resolution: {pix.width()} x {pix.height()}"
                 )
-            self.image_label.setPixmap(pixmap)
+            elif ext == ".svg":
+                renderer = QSvgRenderer(path)
+                pixmap = QPixmap(self.image_label.size())
+                pixmap.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(pixmap)
+                renderer.render(painter)
+                painter.end()
+                self.image_label.setPixmap(pixmap)
+                default_size = renderer.defaultSize()
+                self.media_info.appendPlainText(
+                    f"Resolution: {default_size.width()} x {default_size.height()}"
+                )
+            else:
+                pixmap = QPixmap(path)
+                # Scale down using KeepAspectRatio if pixmap is larger than image_label
+                if (pixmap.width() > self.image_label.width()) or (pixmap.height() > self.image_label.height()):
+                    pixmap = pixmap.scaled(
+                        self.image_label.size(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
+                self.image_label.setPixmap(pixmap)
+                self.media_info.appendPlainText(
+                    f"Resolution: {pixmap.width()} x {pixmap.height()}"
+                )
             self.preview_stack.setCurrentIndex(1)
-
-            # Show resolution info for images
-            self.media_info.appendPlainText(
-                f"Resolution: {pixmap.width()} x {pixmap.height()}"
-            )
-
         elif ext in self.video_extensions:
             self.media_player.setSource(QUrl.fromLocalFile(path))
             self.media_player.play()
@@ -466,7 +509,7 @@ class MdfindApp(QMainWindow):
                 self.text_preview.setPlainText(content)
                 self.preview_stack.setCurrentIndex(0)
             except:
-                self.text_preview.setPlainText("No preview available (not text, image, or video).")
+                self.text_preview.setPlainText("No preview available.")
                 self.preview_stack.setCurrentIndex(0)
                 
     def on_media_status_changed(self, status):
@@ -512,10 +555,10 @@ class MdfindApp(QMainWindow):
     def on_dir_changed(self):
         self.search_timer.start(DEBOUNCE_DELAY)
 
-    def start_search(self):
+    def start_search(self, extra_clause=None):
         query = self.edit_query.text().strip()
         directory = self.edit_dir.text().strip()
-        if not query:
+        if not query and extra_clause is None:
             self.tree.clear()
             self.lbl_items_found.setText("0 items found")
             return
@@ -524,12 +567,12 @@ class MdfindApp(QMainWindow):
             self.search_worker.stop()
             self.search_worker.wait()
 
-        self.ignore_no_results = False
         self.search_worker = SearchWorker(
             query, directory,
             self.chk_file_name.isChecked(),
             self.chk_match_case.isChecked(),
-            self.chk_full_match.isChecked()
+            self.chk_full_match.isChecked(),
+            extra_clause  # Pass extra clause if provided.
         )
         self.search_worker.progress_signal.connect(self.update_progress)
         self.search_worker.result_signal.connect(self.update_tree)
@@ -557,8 +600,7 @@ class MdfindApp(QMainWindow):
         self.file_data = filtered_files
         
         if not filtered_files:
-            if not self.ignore_no_results:
-                self.show_info("Info", "No results found.")
+            self.show_info("Info", "No results found.")
             self.lbl_items_found.setText("0 items found")
             return
         
@@ -983,61 +1025,6 @@ class MdfindApp(QMainWindow):
             QSplitter::handle:hover {
                 background-color: #c0c0c0;
             }
-            QMenuBar {
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 1, y2: 1,
-                    stop: 0 #ffffff, stop: 1 #f0f0f0
-                );
-                color: #000000;
-            }
-            QMenuBar::item {
-                background-color: transparent;
-                color: #000000;
-            }
-            QMenuBar::item:selected {
-                background-color: #e0e0e0;
-            }
-            QMenu {
-                background-color: #ffffff;
-                color: #000000;
-                border: 1px solid #c0c0c0;
-            }
-            QMenu::item:selected {
-                background-color: #e0e0e0;
-            }
-            QMessageBox {
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QMessageBox QLabel {
-                color: #000000;
-                background-color: transparent;
-            }
-            QMessageBox QPushButton {
-                background-color: #e0e0e0;
-                border: none;
-                border-radius: 4px;
-                padding: 5px 15px;
-                color: #000000;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #d0d0d0;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                color: #000000;
-                padding: 4px;
-                border: none;
-                border-right: 1px solid #c0c0c0;
-                border-bottom: 1px solid #c0c0c0;
-            }
-            QHeaderView::section:hover {
-                background-color: #e0e0e0;
-            }
-            QHeaderView::section:checked {
-                background-color: #e0e0e0;
-            }
         """)
     
     def set_dark_mode(self):
@@ -1081,63 +1068,10 @@ class MdfindApp(QMainWindow):
             QSplitter::handle:hover {
                 background-color: #606060;
             }
-            QMenuBar {
-                background: qlineargradient(
-                    x1: 0, y1: 0, x2: 1, y2: 1,
-                    stop: 0 #2b2b2b, stop: 1 #3c3f41
-                );
-                color: #f0f0f0;
-            }
-            QMenuBar::item {
-                background-color: transparent;
-                color: #f0f0f0;
-            }
-            QMenuBar::item:selected {
-                background-color: #606060;
-            }
-            QMenu {
-                background-color: #3c3f41;
-                color: #f0f0f0;
-            }
-            QMenu::item:selected {
-                background-color: #606060;
-            }
-            QMessageBox {
-                background-color: #2b2b2b;
-                color: #f0f0f0;
-            }
-            QMessageBox QLabel {
-                color: #f0f0f0;
-                background-color: transparent;
-            }
-            QMessageBox QPushButton {
-                background-color: #5a5a5a;
-                border: none;
-                border-radius: 4px;
-                padding: 5px 15px;
-                color: #f0f0f0;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #707070;
-            }
-            QHeaderView::section {
-                background-color: #3c3f41;
-                color: #f0f0f0;
-                padding: 4px;
-                border: none;
-                border-right: 1px solid #606060;
-            }
-            QHeaderView::section:hover {
-                background-color: #505050;
-            }
-            QHeaderView::section:checked {
-                background-color: #505050;
-            }
         """)
 
     def toggle_dark_mode(self, checked):
-        if (checked):
+        if checked:
             self.set_dark_mode()
         else:
             self.set_non_dark_mode()
@@ -1209,6 +1143,27 @@ class MdfindApp(QMainWindow):
         config["window_size"] = {"width": self.width(), "height": self.height()}
         write_config(config)
         super().closeEvent(event)
+    
+    # === Updated bookmark methods ===
+    def bookmark_large_files(self):
+        clause = 'kMDItemFSSize >= 52428800'
+        self.start_search(extra_clause=clause)
+
+    def bookmark_videos(self):
+        clause = 'kMDItemContentTypeTree = "public.movie"'
+        self.start_search(extra_clause=clause)
+
+    def bookmark_audio(self):
+        clause = 'kMDItemContentTypeTree = "public.audio"'
+        self.start_search(extra_clause=clause)
+
+    def bookmark_images(self):
+        clause = 'kMDItemContentTypeTree = "public.image"'
+        self.start_search(extra_clause=clause)
+
+    def bookmark_archives(self):
+        clause = 'kMDItemContentTypeTree = "public.archive"'
+        self.start_search(extra_clause=clause)
 
 
 if __name__ == '__main__':
