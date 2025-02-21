@@ -173,7 +173,6 @@ class MdfindApp(QMainWindow):
         help_menu = menubar.addMenu('Help')
         about_action = help_menu.addAction('About')
         about_action.triggered.connect(self.show_about_dialog)
-
         # Add a "History" menu
         history_menu = menubar.addMenu('History')
         clear_history_action = history_menu.addAction('Clear History')
@@ -327,26 +326,35 @@ class MdfindApp(QMainWindow):
         # 2) Image Preview: Fixed size, scale manually if needed
         self.image_label = QLabel()
         self.image_label.setFixedSize(500, 400)
-        self.image_label.setScaledContents(True)
+        self.image_label.setScaledContents(False)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # New: Wrap image_label in a centered container
+        image_container = QWidget()
+        image_layout = QVBoxLayout(image_container)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        image_layout.addWidget(self.image_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # 3) Video Preview: Fixed size with aspect ratio maintained
         self.video_widget = QVideoWidget()
         self.video_widget.setFixedSize(500, 400)
-        # assert hasattr(QVideoWidget, "setAspectRatioMode"), "need PyQt6 >= 6.2.0"
         if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
             self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         self.audio_output = QAudioOutput()
         self.media_player = QMediaPlayer()
         self.media_player.setVideoOutput(self.video_widget)
         self.media_player.setAudioOutput(self.audio_output)
-
         self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
-
-        # Add to stack
+        
+        # New: Wrap video widget in a centered container
+        video_container = QWidget()
+        video_layout = QVBoxLayout(video_container)
+        video_layout.setContentsMargins(0, 0, 0, 0)
+        video_layout.addWidget(self.video_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # Add container to stack instead of self.video_widget directly.
         self.preview_stack.addWidget(self.text_preview)  # index 0
-        self.preview_stack.addWidget(self.image_label)   # index 1
-        self.preview_stack.addWidget(self.video_widget)  # index 2
+        self.preview_stack.addWidget(image_container)   # index 1
+        self.preview_stack.addWidget(video_container)      # index 2
 
         self.preview_splitter.addWidget(self.preview_stack)
 
@@ -470,15 +478,20 @@ class MdfindApp(QMainWindow):
                 )
             elif ext == ".svg":
                 renderer = QSvgRenderer(path)
-                pixmap = QPixmap(self.image_label.size())
+                default_size = renderer.defaultSize()
+                container_size = self.image_label.size()
+                ratio = min(container_size.width() / default_size.width(), 
+                            container_size.height() / default_size.height())
+                new_width = int(default_size.width() * ratio)
+                new_height = int(default_size.height() * ratio)
+                pixmap = QPixmap(new_width, new_height)
                 pixmap.fill(Qt.GlobalColor.transparent)
                 painter = QPainter(pixmap)
                 renderer.render(painter)
                 painter.end()
                 self.image_label.setPixmap(pixmap)
-                default_size = renderer.defaultSize()
                 self.media_info.appendPlainText(
-                    f"Resolution: {default_size.width()} x {default_size.height()}"
+                    f"Resolution: {new_width} x {new_height}"
                 )
             else:
                 pixmap = QPixmap(path)
@@ -600,7 +613,6 @@ class MdfindApp(QMainWindow):
         self.file_data = filtered_files
         
         if not filtered_files:
-            self.show_info("Info", "No results found.")
             self.lbl_items_found.setText("0 items found")
             return
         
