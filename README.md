@@ -1,3 +1,5 @@
+[English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md)
+
 # Everything by mdfind
 
 A powerful and efficient file search tool for macOS, leveraging the native Spotlight engine for lightning-fast results.
