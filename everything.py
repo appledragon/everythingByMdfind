@@ -9,7 +9,8 @@ import shutil
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
-    QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter
+    QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
+    QSlider, QToolButton, QStyle
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -36,6 +37,20 @@ def write_config(data):
     except:
         pass
 
+
+# Custom Slider that responds to direct clicks
+class ClickableSlider(QSlider):
+    def __init__(self, orientation):
+        super().__init__(orientation)
+        
+    def mousePressEvent(self, event):
+        # Calculate the relative position of the click and convert to value
+        value = self.minimum() + (self.maximum() - self.minimum()) * event.position().x() / self.width()
+        self.setValue(int(value))
+        # Emit the sliderMoved signal to update video position
+        self.sliderMoved.emit(int(value))
+        # Pass the event to the parent class
+        super().mousePressEvent(event)
 
 # Custom QTreeWidget to support drag and drop of files to external applications
 class DraggableTreeWidget(QTreeWidget):
@@ -164,6 +179,7 @@ class MdfindApp(QMainWindow):
         config = read_config()
         self.dark_mode = config.get("dark_mode", False)
         self.history_enabled = config.get("history_enabled", True)
+        self.preview_enabled = config.get("preview_enabled", False) # Add this line to load preview setting
         self.setWindowTitle("Everything by mdfind")
         size = config.get("window_size", {"width": 1920, "height": 1080})
         self.resize(size["width"], size["height"])
@@ -186,8 +202,10 @@ class MdfindApp(QMainWindow):
         view_menu = menubar.addMenu('View')
         toggle_preview_action = view_menu.addAction('Toggle Preview')
         toggle_preview_action.setCheckable(True)
-        toggle_preview_action.setChecked(False)
+        toggle_preview_action.setChecked(self.preview_enabled) # Use the loaded setting instead of hardcoded False
         toggle_preview_action.triggered.connect(self.toggle_preview)
+        # Store reference to the toggle_preview_action for later use
+        self.toggle_preview_action = toggle_preview_action
         # Added dark mode toggle action in the View menu
         dark_mode_action = view_menu.addAction('Dark Mode')
         dark_mode_action.setCheckable(True)
@@ -310,6 +328,31 @@ class MdfindApp(QMainWindow):
         preview_title = QLabel("<b>Preview</b>")
         header_layout.addWidget(preview_title)
         header_layout.addStretch()
+        
+        # Add a more stylish close button to the header
+        close_button = QPushButton("✕")  # Using Unicode "Heavy Multiplication X" character
+        close_button.setFixedSize(24, 24)  # Keep the square size
+        close_button.setToolTip("Close preview panel")
+        close_button.clicked.connect(self.close_preview)
+        
+        # Apply special styling to the close button to make it more elegant
+        close_button.setObjectName("previewCloseButton")  # Set object name for styling
+        close_button.setStyleSheet("""
+            #previewCloseButton {
+                border: none;
+                border-radius: 12px;
+                font-size: 14px;
+                font-weight: bold;
+                background-color: transparent;
+            }
+            #previewCloseButton:hover {
+                background-color: #d32f2f;
+                color: white;
+            }
+        """)
+        
+        header_layout.addWidget(close_button)
+        
         preview_layout.addLayout(header_layout)
         
         # Create vertical splitter for preview (top) and metadata (bottom)
@@ -343,13 +386,57 @@ class MdfindApp(QMainWindow):
         self.media_player = QMediaPlayer()
         self.media_player.setVideoOutput(self.video_widget)
         self.media_player.setAudioOutput(self.audio_output)
-        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        # self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        self.media_player.positionChanged.connect(self.update_position)
+        self.media_player.durationChanged.connect(self.update_duration)
         
-        # New: Wrap video widget in a centered container
+        # New: Create video controls
+        video_controls_layout = QHBoxLayout()
+        
+        # Play/Pause button
+        self.play_button = QToolButton()
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.play_button.clicked.connect(self.toggle_play_pause)
+        video_controls_layout.addWidget(self.play_button)
+        
+        # Current time label
+        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label.setMinimumWidth(100)
+        video_controls_layout.addWidget(self.time_label)
+        
+        # Seekbar - replace standard QSlider with our ClickableSlider
+        self.seek_slider = ClickableSlider(Qt.Orientation.Horizontal)
+        self.seek_slider.setRange(0, 0)
+        self.seek_slider.sliderMoved.connect(self.set_position)
+        self.seek_slider.sliderPressed.connect(self.on_slider_pressed)
+        self.seek_slider.sliderReleased.connect(self.on_slider_released)
+        video_controls_layout.addWidget(self.seek_slider, 4)  # Give seekbar more space
+        
+        # Volume button and slider
+        self.volume_button = QToolButton()
+        self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+        self.volume_button.clicked.connect(self.toggle_mute)
+        video_controls_layout.addWidget(self.volume_button)
+        
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(70)  # Default volume
+        self.volume_slider.setMaximumWidth(100)
+        self.volume_slider.valueChanged.connect(self.set_volume)
+        self.audio_output.setVolume(0.7)  # Set initial volume to 70%
+        video_controls_layout.addWidget(self.volume_slider)
+        
+        # Create container for video and its controls
         video_container = QWidget()
         video_layout = QVBoxLayout(video_container)
         video_layout.setContentsMargins(0, 0, 0, 0)
         video_layout.addWidget(self.video_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        video_layout.addLayout(video_controls_layout)
+        
+        # Flag to track if slider is being dragged
+        self.slider_dragging = False
+        # Flag to track previous playback state
+        self.was_playing = False
         
         # Add container to stack instead of self.video_widget directly.
         self.preview_stack.addWidget(self.text_preview)  # index 0
@@ -367,7 +454,7 @@ class MdfindApp(QMainWindow):
         splitter.setSizes([800, 400])  # Initial left-right ratio
 
         # Make the preview panel invisible by default
-        self.preview_container.setVisible(False)
+        self.preview_container.setVisible(self.preview_enabled) # Use the loaded setting instead of always hidden
 
         # Load last sort settings from config
         config = read_config()
@@ -508,6 +595,13 @@ class MdfindApp(QMainWindow):
                 )
             self.preview_stack.setCurrentIndex(1)
         elif ext in self.video_extensions:
+            # Reset controls before loading new media
+            self.seek_slider.setValue(0)
+            self.seek_slider.setRange(0, 0)
+            self.time_label.setText("00:00 / 00:00")
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+            
+            # Load and play the media
             self.media_player.setSource(QUrl.fromLocalFile(path))
             self.media_player.play()
             self.preview_stack.setCurrentIndex(2)
@@ -535,11 +629,82 @@ class MdfindApp(QMainWindow):
         # Skip if resolution is invalid
         if size.width() <= 0 or size.height() <= 0:
             return
+            
         self.media_info.appendPlainText(
-            f"Resolution: {size.width()} x {size.height()}\n"
+            f"\nResolution: {size.width()} x {size.height()}\n"
             f"Duration: {duration_secs} seconds"
         )
 
+    # === New Video Player Control Methods ===
+    def toggle_play_pause(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        else:
+            self.media_player.play()
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+    
+    def is_slider_dragging(self, dragging):
+        self.slider_dragging = dragging
+    
+    def set_position(self, position):
+        self.media_player.setPosition(position)
+    
+    def update_position(self, position):
+        if not self.slider_dragging:
+            self.seek_slider.setValue(position)
+        
+        # Update time label
+        total_duration = self.media_player.duration()
+        
+        # Convert milliseconds to MM:SS format
+        current_mins = position // 60000
+        current_secs = (position % 60000) // 1000
+        total_mins = total_duration // 60000
+        total_secs = (total_duration % 60000) // 1000
+        
+        self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+    
+    def update_duration(self, duration):
+        self.seek_slider.setRange(0, duration)
+        
+        # Update play button state
+        if duration > 0:
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+            self.update_video_info()
+    
+    def set_volume(self, volume):
+        # Convert 0-100 range to 0.0-1.0
+        self.audio_output.setVolume(volume / 100.0)
+        
+        # Update volume button icon based on volume level
+        if volume == 0:
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+        else:
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+    
+    def toggle_mute(self):
+        if self.audio_output.isMuted():
+            self.audio_output.setMuted(False)
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+            self.volume_slider.setValue(int(self.audio_output.volume() * 100))
+        else:
+            self.audio_output.setMuted(True)
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+    
+    def on_slider_pressed(self):
+        self.slider_dragging = True
+        # Store current playing state
+        self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if self.was_playing:
+            self.media_player.pause()
+    
+    def on_slider_released(self):
+        self.slider_dragging = False
+        # Restore playing state if it was playing before
+        if self.was_playing:
+            self.media_player.play()
+        
     # ========== Lazy loading ==========
     def check_scroll_position(self):
         scrollbar = self.tree.verticalScrollBar()
@@ -995,6 +1160,11 @@ class MdfindApp(QMainWindow):
 
     def toggle_preview(self, checked):
         self.preview_container.setVisible(checked)
+        # Save preview state to config
+        self.preview_enabled = checked
+        cfg = read_config()
+        cfg["preview_enabled"] = checked
+        write_config(cfg)
     
     def set_non_dark_mode(self):
         self.setStyleSheet("""
@@ -1037,7 +1207,59 @@ class MdfindApp(QMainWindow):
             QSplitter::handle:hover {
                 background-color: #c0c0c0;
             }
+            QToolButton {
+                background-color: #e0e0e0;
+                border: 1px solid #c0c0c0;
+                border-radius: 4px;
+                padding: 4px;
+                color: #000000;
+            }
+            QToolButton:hover {
+                background-color: #d0d0d0;
+            }
+            QSlider::groove:horizontal {
+                border: 1px solid #c0c0c0;
+                height: 4px;
+                background: #e0e0e0;
+                margin: 2px 0;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #007acc;
+                border: 1px solid #007acc;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #0098ff;
+            }
+            QSlider::add-page:horizontal {
+                background: #e0e0e0;
+            }
+            QSlider::sub-page:horizontal {
+                background: #a0c8e8;
+            }
         """)
+        
+        # Update close button style for light mode
+        if hasattr(self, 'preview_container'):
+            close_btn = self.preview_container.findChild(QPushButton, "previewCloseButton")
+            if close_btn:
+                close_btn.setStyleSheet("""
+                    #previewCloseButton {
+                        border: none;
+                        border-radius: 12px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        background-color: transparent;
+                        color: #555555;
+                    }
+                    #previewCloseButton:hover {
+                        background-color: #d32f2f;
+                        color: white;
+                    }
+                """)
     
     def set_dark_mode(self):
         self.setStyleSheet("""
@@ -1080,7 +1302,59 @@ class MdfindApp(QMainWindow):
             QSplitter::handle:hover {
                 background-color: #606060;
             }
+            QToolButton {
+                background-color: #5a5a5a;
+                border: 1px solid #707070;
+                border-radius: 4px;
+                padding: 4px;
+                color: #f0f0f0;
+            }
+            QToolButton:hover {
+                background-color: #707070;
+            }
+            QSlider::groove:horizontal {
+                border: 1px solid #707070;
+                height: 4px;
+                background: #5a5a5a;
+                margin: 2px 0;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #007acc;
+                border: 1px solid #0098ff;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #0098ff;
+            }
+            QSlider::add-page:horizontal {
+                background: #3c3f41;
+            }
+            QSlider::sub-page:horizontal {
+                background: #145880;
+            }
         """)
+        
+        # Update close button style for dark mode
+        if hasattr(self, 'preview_container'):
+            close_btn = self.preview_container.findChild(QPushButton, "previewCloseButton")
+            if close_btn:
+                close_btn.setStyleSheet("""
+                    #previewCloseButton {
+                        border: none;
+                        border-radius: 12px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        background-color: transparent;
+                        color: #aaaaaa;
+                    }
+                    #previewCloseButton:hover {
+                        background-color: #c62828;
+                        color: white;
+                    }
+                """)
 
     def toggle_dark_mode(self, checked):
         if checked:
@@ -1176,6 +1450,13 @@ class MdfindApp(QMainWindow):
     def bookmark_archives(self):
         clause = 'kMDItemContentTypeTree = "public.archive"'
         self.start_search(extra_clause=clause)
+
+    # Add a method to close the preview panel
+    def close_preview(self):
+        # Update the menu action state
+        self.toggle_preview_action.setChecked(False)
+        # Call the existing toggle_preview method with False to hide the panel
+        self.toggle_preview(False)
 
 
 if __name__ == '__main__':
