@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap, QMovie, QPainter
+from PyQt6.QtGui import QPixmap, QMovie, QPainter, QPen, QColor, QFont
 from PyQt6.QtSvg import QSvgRenderer
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
@@ -175,11 +175,14 @@ class SearchWorker(QThread):
 class MdfindApp(QMainWindow):
     def __init__(self):
         super().__init__()
+                    
         # Load dark mode and history settings from config
         config = read_config()
         self.dark_mode = config.get("dark_mode", False)
         self.history_enabled = config.get("history_enabled", True)
         self.preview_enabled = config.get("preview_enabled", False) # Add this line to load preview setting
+        self.continuous_playback = config.get("continuous_playback", False) # Add continuous playback setting
+        self.slider_dragging = False  # Initialize slider_dragging attribute
         self.setWindowTitle("Everything by mdfind")
         size = config.get("window_size", {"width": 1920, "height": 1080})
         self.resize(size["width"], size["height"])
@@ -206,6 +209,14 @@ class MdfindApp(QMainWindow):
         toggle_preview_action.triggered.connect(self.toggle_preview)
         # Store reference to the toggle_preview_action for later use
         self.toggle_preview_action = toggle_preview_action
+
+        # Add continuous playback action
+        continuous_playback_action = view_menu.addAction('Continuous Playback')
+        continuous_playback_action.setCheckable(True)
+        continuous_playback_action.setChecked(self.continuous_playback)
+        continuous_playback_action.triggered.connect(self.toggle_continuous_playback)
+        self.continuous_playback_action = continuous_playback_action
+        
         # Added dark mode toggle action in the View menu
         dark_mode_action = view_menu.addAction('Dark Mode')
         dark_mode_action.setCheckable(True)
@@ -216,7 +227,7 @@ class MdfindApp(QMainWindow):
         else:
             self.set_non_dark_mode()
         
-        # === New: Bookmarks Menu ===
+        # === Bookmarks Menu ===
         bookmarks_menu = menubar.addMenu("Bookmarks")
         bookmarks_menu.addAction("Large Files", self.bookmark_large_files)
         bookmarks_menu.addAction("Video Files", self.bookmark_videos)
@@ -323,7 +334,7 @@ class MdfindApp(QMainWindow):
         self.preview_container = QWidget()
         preview_layout = QVBoxLayout(self.preview_container)
         
-        # New header layout with Preview title and close button
+        # Header layout with Preview title and close button
         header_layout = QHBoxLayout()
         preview_title = QLabel("<b>Preview</b>")
         header_layout.addWidget(preview_title)
@@ -371,26 +382,48 @@ class MdfindApp(QMainWindow):
         self.image_label.setFixedSize(500, 400)
         self.image_label.setScaledContents(False)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # New: Wrap image_label in a centered container
+        
+        # Wrap image_label in a centered container
         image_container = QWidget()
         image_layout = QVBoxLayout(image_container)
         image_layout.setContentsMargins(0, 0, 0, 0)
         image_layout.addWidget(self.image_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # 3) Video Preview: Fixed size with aspect ratio maintained
+        # 3) Video/Audio Preview Container
+        media_container = QWidget()
+        media_layout = QVBoxLayout(media_container)
+        media_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Video widget
         self.video_widget = QVideoWidget()
         self.video_widget.setFixedSize(500, 400)
         if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
             self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        
+        self.audio_label = QLabel()
+        self.audio_label.setFixedSize(500, 400)
+        self.audio_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.audio_label.setWordWrap(True)
+
+        font = QFont()
+        font.setPointSize(16)
+        font.setBold(True)
+        self.audio_label.setFont(font)
+        self.audio_label.setVisible(False)
+        
+        media_layout.addWidget(self.video_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        media_layout.addWidget(self.audio_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # Set up media player
         self.audio_output = QAudioOutput()
         self.media_player = QMediaPlayer()
         self.media_player.setVideoOutput(self.video_widget)
         self.media_player.setAudioOutput(self.audio_output)
-        # self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
         self.media_player.positionChanged.connect(self.update_position)
         self.media_player.durationChanged.connect(self.update_duration)
+        self.media_player.playbackStateChanged.connect(self.on_playback_state_changed)
         
-        # New: Create video controls
+        # Create video controls
         video_controls_layout = QHBoxLayout()
         
         # Play/Pause button
@@ -426,22 +459,13 @@ class MdfindApp(QMainWindow):
         self.audio_output.setVolume(0.7)  # Set initial volume to 70%
         video_controls_layout.addWidget(self.volume_slider)
         
-        # Create container for video and its controls
-        video_container = QWidget()
-        video_layout = QVBoxLayout(video_container)
-        video_layout.setContentsMargins(0, 0, 0, 0)
-        video_layout.addWidget(self.video_widget, alignment=Qt.AlignmentFlag.AlignCenter)
-        video_layout.addLayout(video_controls_layout)
-        
-        # Flag to track if slider is being dragged
-        self.slider_dragging = False
-        # Flag to track previous playback state
-        self.was_playing = False
+        # Add all controls to the media layout
+        media_layout.addLayout(video_controls_layout)
         
         # Add container to stack instead of self.video_widget directly.
         self.preview_stack.addWidget(self.text_preview)  # index 0
         self.preview_stack.addWidget(image_container)   # index 1
-        self.preview_stack.addWidget(video_container)      # index 2
+        self.preview_stack.addWidget(media_container)      # index 2
 
         self.preview_splitter.addWidget(self.preview_stack)
 
@@ -514,7 +538,9 @@ class MdfindApp(QMainWindow):
         # Recognizable extensions
         self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
         self.video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".mpeg"}
-        
+        # Add audio extensions
+        self.audio_extensions = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".caf",".aif",".m4r"}
+    
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
         # if preview is not visible, do nothing
@@ -523,7 +549,7 @@ class MdfindApp(QMainWindow):
         
         selected_items = self.tree.selectedItems()
         if not selected_items or len(selected_items) != 1:
-            # For multiple or no selection: stop video playback and clear preview
+            # For multiple or no selection: stop video/audio playback and clear preview
             self.media_player.stop()
             self.preview_stack.setCurrentIndex(0)
             self.text_preview.setPlainText("")
@@ -538,7 +564,7 @@ class MdfindApp(QMainWindow):
             self.media_info.setPlainText("")
             return
 
-        # Stop previous video playback
+        # Stop previous video/audio playback
         self.media_player.stop()
 
         # Display basic file info in the bottom pane
@@ -603,6 +629,26 @@ class MdfindApp(QMainWindow):
             
             # Load and play the media
             self.media_player.setSource(QUrl.fromLocalFile(path))
+            # Make video widget visible for video files
+            self.video_widget.setVisible(True)
+            # Hide audio label
+            self.audio_label.setVisible(False)
+            self.media_player.play()
+            self.preview_stack.setCurrentIndex(2)
+        elif ext in self.audio_extensions:
+            # Reset controls before loading new audio
+            self.seek_slider.setValue(0)
+            self.seek_slider.setRange(0, 0)
+            self.time_label.setText("00:00 / 00:00")
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+            
+            self.media_player.setSource(QUrl.fromLocalFile(path))
+            self.video_widget.setVisible(False)
+            self.audio_label.setVisible(True)
+            filename = os.path.basename(path)
+            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                    f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
+                                    f"</div>")
             self.media_player.play()
             self.preview_stack.setCurrentIndex(2)
         else:
@@ -635,7 +681,7 @@ class MdfindApp(QMainWindow):
             f"Duration: {duration_secs} seconds"
         )
 
-    # === New Video Player Control Methods ===
+    # === Video Player Control Methods ===
     def toggle_play_pause(self):
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.pause()
@@ -651,20 +697,24 @@ class MdfindApp(QMainWindow):
         self.media_player.setPosition(position)
     
     def update_position(self, position):
-        if not self.slider_dragging:
-            self.seek_slider.setValue(position)
+        try:
+            if not self.slider_dragging:
+                self.seek_slider.setValue(position)
+            
+            # Update time label
+            total_duration = self.media_player.duration()
+            
+            # Convert milliseconds to MM:SS format
+            current_mins = position // 60000
+            current_secs = (position % 60000) // 1000
+            total_mins = total_duration // 60000
+            total_secs = (total_duration % 60000) // 1000
+            
+            self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+        except Exception as e:
+            # Silently handle errors during position update to prevent player crashes
+            pass
         
-        # Update time label
-        total_duration = self.media_player.duration()
-        
-        # Convert milliseconds to MM:SS format
-        current_mins = position // 60000
-        current_secs = (position % 60000) // 1000
-        total_mins = total_duration // 60000
-        total_secs = (total_duration % 60000) // 1000
-        
-        self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
-    
     def update_duration(self, duration):
         self.seek_slider.setRange(0, duration)
         
@@ -1361,6 +1411,16 @@ class MdfindApp(QMainWindow):
             self.set_dark_mode()
         else:
             self.set_non_dark_mode()
+            
+        # Update the audio label only if there's media currently playing
+        if hasattr(self, 'media_player') and self.media_player.source().isValid():
+            current_path = self.media_player.source().toLocalFile()
+            if current_path:
+                filename = os.path.basename(current_path)
+                self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                        f"<div style='font-size: 24pt; color: {'white' if checked else 'black'};'>{filename}</div>"
+                        f"</div>")
+
         cfg = read_config()
         cfg["dark_mode"] = checked
         write_config(cfg)
@@ -1457,6 +1517,83 @@ class MdfindApp(QMainWindow):
         self.toggle_preview_action.setChecked(False)
         # Call the existing toggle_preview method with False to hide the panel
         self.toggle_preview(False)
+
+    # toggle continuous playback method
+    def toggle_continuous_playback(self, checked):
+        self.continuous_playback = checked
+        cfg = read_config()
+        cfg["continuous_playback"] = checked
+        write_config(cfg)
+
+    # media playback state change handler
+    def on_playback_state_changed(self, state):
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            # Check if the media actually finished playing (not stopped manually)
+            # and if continuous playback is enabled
+            if self.continuous_playback and self.media_player.position() > 0:
+                # Media finished playing, play the next one
+                self.play_next_media()
+
+    # method to play the next media file
+    def play_next_media(self):
+        # Get all items in the tree
+        item_count = self.tree.topLevelItemCount()
+        if item_count == 0:
+            return
+
+        # Find the currently selected item
+        current_index = -1
+        selected_items = self.tree.selectedItems()
+        if selected_items:
+            current_item = selected_items[0]
+            for i in range(item_count):
+                if self.tree.topLevelItem(i) == current_item:
+                    current_index = i
+                    break
+
+        # Find the next media file
+        next_index = current_index + 1
+        while next_index < item_count:
+            next_item = self.tree.topLevelItem(next_index)
+            path = next_item.text(3)
+            _, ext = os.path.splitext(path)
+            ext = ext.lower()
+            
+            if ext in self.video_extensions or ext in self.audio_extensions:
+                # Select the item in the tree
+                self.tree.setCurrentItem(next_item)
+                self.tree.scrollToItem(next_item)
+                
+                # Try to play the media
+                try:
+                    # Make sure preview panel is visible
+                    if not self.preview_container.isVisible():
+                        self.toggle_preview(True)
+                        self.toggle_preview_action.setChecked(True)
+                    
+                    # Setup for audio or video playback
+                    if ext in self.video_extensions:
+                        self.video_widget.setVisible(True)
+                        self.audio_label.setVisible(False)
+                    elif ext in self.audio_extensions:
+                        self.video_widget.setVisible(False)
+                        self.audio_label.setVisible(True)
+                        filename = os.path.basename(path)
+                        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                               f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
+                                               f"</div>")
+                    
+                    # Load and play the media
+                    self.media_player.setSource(QUrl.fromLocalFile(path))
+                    self.media_player.play()
+                    self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+                    self.preview_stack.setCurrentIndex(2)  # Show media player widget
+                    return
+                except Exception as e:
+                    print(f"Failed to play media file: {path}, error: {str(e)}")
+                    # If it fails, continue to the next one
+            
+            next_index += 1
 
 
 if __name__ == '__main__':
