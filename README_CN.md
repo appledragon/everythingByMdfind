@@ -90,7 +90,7 @@
 
 2. **生成应用：**
     ```bash
-    pyinstaller --onefile everything.py
+    pyinstaller --onefile --windowed --noconsole everything.py
     ```
     生成文件位于 `dist` 目录
 

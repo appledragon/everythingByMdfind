@@ -85,7 +85,7 @@ PyInstaller를 사용하여 스탠드얼론 애플리케이션을 만들 수 있
 2. **애플리케이션 생성:**
 
     ```bash
-    pyinstaller --onefile everything.py
+    pyinstaller --onefile --windowed --noconsole everything.py
     ```
 
     실행 파일은 `dist` 디렉토리에 생성됩니다.

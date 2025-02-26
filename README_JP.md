@@ -87,7 +87,7 @@ PyInstaller を使ってスタンドアロンアプリケーションを作成�
 2. **アプリケーションの作成:**
 
     ```bash
-    pyinstaller --onefile everything.py
+    pyinstaller --onefile --windowed --noconsole everything.py
     ```
 
     実行可能ファイルは `dist` ディレクトリに生成されます。

@@ -87,7 +87,7 @@ You can use PyInstaller to create a standalone application:
 2.  **Create the standalone application:**
 
     ```bash
-    pyinstaller --onefile everything.py
+    pyinstaller --onefile --windowed --noconsole everything.py
     ```
 
     The executable will be located in the `dist` directory.
