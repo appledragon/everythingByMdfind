@@ -19,12 +19,19 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
     *   Images (JPEG, PNG, GIF with animation support, BMP, WEBP, HEIC)
     *   SVG files with proper scaling and centering
     *   Video files with playback controls
+    *   Audio files with visualizer
+*   **Integrated Media Player:**
+    *   Video and audio playback with standard controls
+    *   Standalone player window for media files
+    *   Continuous playback mode
+    *   Volume control and mute option
 *   **Bookmarks:** Quick access to common searches:
     *   Large Files (>50MB)
     *   Video Files
     *   Audio Files
     *   Images
     *   Archives
+    *   Applications
 *   **Sortable Results:** Organize search results by name, size, date modified, or path.
 *   **Multi-File Operations:** Perform actions on multiple files simultaneously:
     *   Multi-select files using Shift or Command (⌘) keys
@@ -37,6 +44,7 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
 *   **CSV Export:** Export search results to a CSV file for further analysis or record-keeping.
 *   **Lazy Loading:** Handles large result sets efficiently by loading items in batches as you scroll.
 *   **Drag & Drop:** Drag files directly to external applications.
+*   **Path Operations:** Copy file path, directory path, or filename to clipboard.
 
 ## Usage
 
@@ -45,9 +53,11 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
 3.  Use the "Advanced Filters" to refine your search based on file size, extension, and matching options.
 4.  Click on the column headers ("Name", "Size", "Date Modified", "Path") to sort the results.
 5.  Toggle the Preview panel using the View menu to preview selected files.
-6.  Use Bookmarks menu to quickly search for specific file types.
+6.  Use Bookmarks menu to quickly search for specific file types like videos, audio, images, applications, etc.
 7.  Right-click on selected files to access the context menu with available actions.
 8.  Drag selected files from the search results into other apps supporting drag & drop.
+9.  For media files, use the integrated player controls or open in a standalone player window.
+10. Toggle dark mode from the View menu for a more comfortable experience in low-light environments.
 
 ## Installation
 
@@ -106,7 +116,7 @@ Apple Dragon
 
 ## Version
 
-1.0.0
+1.2.1
 
 ## Acknowledgements
 
