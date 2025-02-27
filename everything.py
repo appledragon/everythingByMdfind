@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap, QMovie, QPainter, QPen, QColor, QFont
+from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont
 from PyQt6.QtSvg import QSvgRenderer
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
@@ -172,6 +172,215 @@ class SearchWorker(QThread):
                 pass
 
 
+# standalone player window
+class StandalonePlayerWindow(QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Media Player")
+        self.resize(800, 600)  # Default size, user can resize
+        
+        # Main widget and layout
+        central_widget = QWidget()
+        main_layout = QVBoxLayout(central_widget)
+        
+        # Video widget
+        self.video_widget = QVideoWidget()
+        if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
+            self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        
+        # Audio label for audio files
+        self.audio_label = QLabel()
+        self.audio_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.audio_label.setWordWrap(True)
+        font = QFont()
+        font.setPointSize(16)
+        font.setBold(True)
+        self.audio_label.setFont(font)
+        self.audio_label.setVisible(False)
+        
+        # Media container to hold both video widget and audio label
+        media_container = QWidget()
+        media_layout = QVBoxLayout(media_container)
+        media_layout.setContentsMargins(0, 0, 0, 0)
+        media_layout.addWidget(self.video_widget)
+        media_layout.addWidget(self.audio_label)
+        
+        main_layout.addWidget(media_container, 1)
+        
+        # Controls layout
+        controls_layout = QHBoxLayout()
+        
+        # Play/Pause button
+        self.play_button = QToolButton()
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        controls_layout.addWidget(self.play_button)
+        
+        # Time label
+        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label.setMinimumWidth(100)
+        controls_layout.addWidget(self.time_label)
+        
+        # Seek slider
+        self.seek_slider = ClickableSlider(Qt.Orientation.Horizontal)
+        self.seek_slider.setRange(0, 0)
+        controls_layout.addWidget(self.seek_slider, 4)
+        
+        # Volume button
+        self.volume_button = QToolButton()
+        self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+        controls_layout.addWidget(self.volume_button)
+        
+        # Volume slider
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(70)  # Default volume
+        self.volume_slider.setMaximumWidth(100)
+        controls_layout.addWidget(self.volume_slider)
+        
+        main_layout.addLayout(controls_layout)
+        
+        # Media player setup
+        self.audio_output = QAudioOutput()
+        self.media_player = QMediaPlayer()
+        self.media_player.setVideoOutput(self.video_widget)
+        self.media_player.setAudioOutput(self.audio_output)
+        self.audio_output.setVolume(0.7)  # 70% volume
+        
+        # Connect signals
+        self.play_button.clicked.connect(self.toggle_play_pause)
+        self.seek_slider.sliderMoved.connect(self.set_position)
+        self.seek_slider.sliderPressed.connect(self.on_slider_pressed)
+        self.seek_slider.sliderReleased.connect(self.on_slider_released)
+        self.volume_button.clicked.connect(self.toggle_mute)
+        self.volume_slider.valueChanged.connect(self.set_volume)
+        self.media_player.positionChanged.connect(self.update_position)
+        self.media_player.durationChanged.connect(self.update_duration)
+        self.media_player.playbackStateChanged.connect(self.on_playback_state_changed)
+        
+        self.setCentralWidget(central_widget)
+        self.slider_dragging = False
+        self.continuous_playback = False
+        self.dark_mode = False
+        self.current_media_path = None
+        self.video_extensions = set()
+        self.audio_extensions = set()
+        
+    def setup_extensions(self, video_ext, audio_ext):
+        """Set up the video and audio extensions from the parent app"""
+        self.video_extensions = video_ext
+        self.audio_extensions = audio_ext
+        
+    def set_continuous_playback(self, enabled):
+        """Set whether continuous playback is enabled"""
+        self.continuous_playback = enabled
+        
+    def set_dark_mode(self, enabled):
+        """Set dark mode for the player"""
+        self.dark_mode = enabled
+        filename = os.path.basename(self.current_media_path) if self.current_media_path else ""
+        if filename:
+            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                    f"<div style='font-size: 24pt; color: {'white' if enabled else 'black'};'>"
+                                    f"{filename}</div></div>")
+        
+    def play_media(self, path, is_video=True):
+        """Play a media file"""
+        self.current_media_path = path
+        
+        # Update UI based on media type
+        if is_video:
+            self.video_widget.setVisible(True)
+            self.audio_label.setVisible(False)
+        else:
+            self.video_widget.setVisible(False)
+            self.audio_label.setVisible(True)
+            filename = os.path.basename(path)
+            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                    f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>"
+                                    f"{filename}</div></div>")
+        
+        self.media_player.setSource(QUrl.fromLocalFile(path))
+        self.media_player.play()
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+        
+    def toggle_play_pause(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        else:
+            self.media_player.play()
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+    
+    def set_position(self, position):
+        self.media_player.setPosition(position)
+    
+    def update_position(self, position):
+        try:
+            if not self.slider_dragging:
+                self.seek_slider.setValue(position)
+            
+            total_duration = self.media_player.duration()
+            current_mins = position // 60000
+            current_secs = (position % 60000) // 1000
+            total_mins = total_duration // 60000
+            total_secs = (total_duration % 60000) // 1000
+            
+            self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+        except Exception:
+            pass
+    
+    def update_duration(self, duration):
+        self.seek_slider.setRange(0, duration)
+        if duration > 0:
+            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+    
+    def set_volume(self, volume):
+        self.audio_output.setVolume(volume / 100.0)
+        if volume == 0:
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+        else:
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+    
+    def toggle_mute(self):
+        if self.audio_output.isMuted():
+            self.audio_output.setMuted(False)
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
+            self.volume_slider.setValue(int(self.audio_output.volume() * 100))
+        else:
+            self.audio_output.setMuted(True)
+            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+    
+    def on_slider_pressed(self):
+        self.slider_dragging = True
+        self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if self.was_playing:
+            self.media_player.pause()
+    
+    def on_slider_released(self):
+        self.slider_dragging = False
+        if self.was_playing:
+            self.media_player.play()
+    
+    def on_playback_state_changed(self, state):
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            if self.continuous_playback and self.media_player.position() > 0:
+                # Signal to the main app that we need to play the next media
+                self.parent().play_next_in_standalone()
+    
+    def closeEvent(self, event):
+        # Signal the parent to restore the embedded player
+        self.parent().restore_embedded_player()
+        event.accept()
+        
+    def get_current_position(self):
+        """Get the current position of the media player"""
+        return self.media_player.position()
+    
+    def get_playback_state(self):
+        """Get the current playback state (playing/paused)"""
+        return self.media_player.playbackState()
+
+
 class MdfindApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -180,8 +389,8 @@ class MdfindApp(QMainWindow):
         config = read_config()
         self.dark_mode = config.get("dark_mode", False)
         self.history_enabled = config.get("history_enabled", True)
-        self.preview_enabled = config.get("preview_enabled", False) # Add this line to load preview setting
-        self.continuous_playback = config.get("continuous_playback", False) # Add continuous playback setting
+        self.preview_enabled = config.get("preview_enabled", False) 
+        self.continuous_playback = config.get("continuous_playback", False)
         self.slider_dragging = False  # Initialize slider_dragging attribute
         self.setWindowTitle("Everything by mdfind")
         size = config.get("window_size", {"width": 1920, "height": 1080})
@@ -334,11 +543,34 @@ class MdfindApp(QMainWindow):
         self.preview_container = QWidget()
         preview_layout = QVBoxLayout(self.preview_container)
         
-        # Header layout with Preview title and close button
+        # Header layout with Preview title and buttons
         header_layout = QHBoxLayout()
         preview_title = QLabel("<b>Preview</b>")
         header_layout.addWidget(preview_title)
         header_layout.addStretch()
+        
+        # Add a pop-out button
+        popout_button = QPushButton("□")  # Square symbol for pop-out
+        popout_button.setFixedSize(24, 24)
+        popout_button.setToolTip("Open in standalone player")
+        popout_button.clicked.connect(self.open_standalone_player)
+        popout_button.setObjectName("previewPopoutButton")
+        popout_button.setStyleSheet("""
+            #previewPopoutButton {
+                border: none;
+                border-radius: 12px;
+                font-size: 14px;
+                font-weight: bold;
+                background-color: transparent;
+            }
+            #previewPopoutButton:hover {
+                background-color: #4285f4;
+                color: white;
+            }
+        """)
+        
+        # Add the popout button to the header
+        header_layout.addWidget(popout_button)
         
         # Add a more stylish close button to the header
         close_button = QPushButton("✕")  # Using Unicode "Heavy Multiplication X" character
@@ -539,8 +771,17 @@ class MdfindApp(QMainWindow):
         self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
         self.video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".mpeg"}
         # Add audio extensions
-        self.audio_extensions = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".caf",".aif",".m4r"}
+        self.audio_extensions = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".caf",".aif",".m4r",".au"}
     
+        # Create the standalone player window but don't show it yet
+        self.standalone_player = StandalonePlayerWindow(self)
+        self.standalone_player_active = False
+        
+        # Configure standalone player
+        self.standalone_player.setup_extensions(self.video_extensions, self.audio_extensions)
+        self.standalone_player.set_continuous_playback(self.continuous_playback)
+        self.standalone_player.set_dark_mode(self.dark_mode)
+
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
         # if preview is not visible, do nothing
@@ -566,6 +807,11 @@ class MdfindApp(QMainWindow):
 
         # Stop previous video/audio playback
         self.media_player.stop()
+        
+        # If standalone player is active, use it instead
+        if self.standalone_player_active:
+            self.show_in_standalone_player(path)
+            return
 
         # Display basic file info in the bottom pane
         file_stat = os.stat(path)
@@ -1412,6 +1658,9 @@ class MdfindApp(QMainWindow):
         else:
             self.set_non_dark_mode()
             
+        # Update the standalone player too
+        self.standalone_player.set_dark_mode(checked)
+        
         # Update the audio label only if there's media currently playing
         if hasattr(self, 'media_player') and self.media_player.source().isValid():
             current_path = self.media_player.source().toLocalFile()
@@ -1436,7 +1685,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.0.0</p>
+<p><b>Version:</b> 1.2.0</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -1455,11 +1704,35 @@ class MdfindApp(QMainWindow):
             self.query_completer.model().setStringList(self.query_history)
             self.show_info("History Cleared", "Search history cleared.")
 
+    def apply_dialog_dark_mode(self, dialog):
+        """Apply dark mode styling to dialog boxes if dark mode is enabled"""
+        if self.dark_mode:
+            dialog.setStyleSheet("""
+                QMessageBox {
+                    background-color: #2d2d30;
+                    color: #f0f0f0;
+                }
+                QLabel {
+                    color: #f0f0f0;
+                }
+                QPushButton {
+                    background-color: #5a5a5a;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                    color: #f0f0f0;
+                }
+                QPushButton:hover {
+                    background-color: #707070;
+                }
+            """)
+
     def show_info(self, title, message):
         msg = QMessageBox(self)
         msg.setWindowTitle(title)
         msg.setIcon(QMessageBox.Icon.Information)
         msg.setText(message)
+        self.apply_dialog_dark_mode(msg)
         msg.exec()
 
     def show_warning(self, title, message):
@@ -1467,6 +1740,7 @@ class MdfindApp(QMainWindow):
         msg.setWindowTitle(title)
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setText(message)
+        self.apply_dialog_dark_mode(msg)
         msg.exec()
 
     def show_critical(self, title, message):
@@ -1474,6 +1748,7 @@ class MdfindApp(QMainWindow):
         msg.setWindowTitle(title)
         msg.setIcon(QMessageBox.Icon.Critical)
         msg.setText(message)
+        self.apply_dialog_dark_mode(msg)
         msg.exec()
 
     def show_question(self, title, message, buttons):
@@ -1482,6 +1757,7 @@ class MdfindApp(QMainWindow):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText(message)
         msg.setStandardButtons(buttons)
+        self.apply_dialog_dark_mode(msg)
         return msg.exec()
 
     def closeEvent(self, event):
@@ -1511,16 +1787,25 @@ class MdfindApp(QMainWindow):
         clause = 'kMDItemContentTypeTree = "public.archive"'
         self.start_search(extra_clause=clause)
 
-    # Add a method to close the preview panel
+
+    # Close the preview panel
     def close_preview(self):
         # Update the menu action state
         self.toggle_preview_action.setChecked(False)
+        
+        # Close the standalone player if it's active
+        if self.standalone_player_active:
+            self.standalone_player.close()
+            self.standalone_player_active = False
+        
         # Call the existing toggle_preview method with False to hide the panel
         self.toggle_preview(False)
 
     # toggle continuous playback method
     def toggle_continuous_playback(self, checked):
         self.continuous_playback = checked
+        # Update the standalone player too
+        self.standalone_player.set_continuous_playback(checked)
         cfg = read_config()
         cfg["continuous_playback"] = checked
         write_config(cfg)
@@ -1595,9 +1880,134 @@ class MdfindApp(QMainWindow):
             
             next_index += 1
 
+    def open_standalone_player(self):
+        """Open the current media in a standalone player window"""
+        # If the standalone player is already active, just restore and bring it to front
+        if self.standalone_player_active:
+            # Restore from minimized state if needed
+            self.standalone_player.setWindowState(self.standalone_player.windowState() & ~Qt.WindowState.WindowMinimized)
+            self.standalone_player.show()
+            self.standalone_player.raise_()
+            return
+            
+        selected_items = self.tree.selectedItems()
+        if not selected_items or len(selected_items) != 1:
+            return
+            
+        path = selected_items[0].text(3)
+        if not os.path.isfile(path):
+            return
+            
+        _, ext = os.path.splitext(path)
+        ext = ext.lower()
+        
+        if ext not in self.video_extensions and ext not in self.audio_extensions:
+            return  # Only open for media files
+            
+        # Stop the embedded player
+        self.media_player.stop()
+        
+        # Set up and show the standalone player
+        is_video = ext in self.video_extensions
+        self.standalone_player.play_media(path, is_video)
+        self.standalone_player_active = True
+        self.standalone_player.show()
+        self.standalone_player.raise_()
+        
+        # Update UI to reflect that media is playing in standalone player
+        self.preview_stack.setCurrentIndex(0)  # Switch to text preview
+        self.text_preview.setPlainText("Media playing in standalone player window.")
+    
+    def show_in_standalone_player(self, path):
+        """Show the given media path in the standalone player"""
+        if not self.standalone_player_active:
+            return
+            
+        _, ext = os.path.splitext(path)
+        ext = ext.lower()
+        
+        if ext in self.video_extensions or ext in self.audio_extensions:
+            is_video = ext in self.video_extensions
+            self.standalone_player.play_media(path, is_video)
+            self.standalone_player.raise_()
+            
+            # Update UI to reflect that media is playing in standalone player
+            self.preview_stack.setCurrentIndex(0)  # Switch to text preview
+            self.text_preview.setPlainText("Media playing in standalone player window.")
+    
+    def restore_embedded_player(self):
+        """Called when the standalone player is closed"""
+        if not self.standalone_player_active:
+            return
+            
+        self.standalone_player_active = False
+        
+        # If there's a selected item, show it in the embedded player
+        selected_items = self.tree.selectedItems()
+        if selected_items and len(selected_items) == 1:
+            path = selected_items[0].text(3)
+            if os.path.isfile(path):
+                # Re-trigger selection change to reload the preview
+                self.on_tree_selection_changed()
+    
+    def play_next_in_standalone(self):
+        """Play the next media file in the standalone player"""
+        if not self.standalone_player_active:
+            return
+            
+        # Find the next media file just like in play_next_media
+        item_count = self.tree.topLevelItemCount()
+        if item_count == 0:
+            return
 
-if __name__ == '__main__':
+        # Find the currently selected item
+        current_index = -1
+        selected_items = self.tree.selectedItems()
+        if selected_items:
+            current_item = selected_items[0]
+            for i in range(item_count):
+                if self.tree.topLevelItem(i) == current_item:
+                    current_index = i
+                    break
+
+        # Find the next media file
+        next_index = current_index + 1
+        while next_index < item_count:
+            next_item = self.tree.topLevelItem(next_index)
+            path = next_item.text(3)
+            _, ext = os.path.splitext(path)
+            ext = ext.lower()
+            
+            if ext in self.video_extensions or ext in self.audio_extensions:
+                # Select the item in the tree
+                self.tree.setCurrentItem(next_item)
+                self.tree.scrollToItem(next_item)
+                
+                # Play in standalone player
+                is_video = ext in self.video_extensions
+                self.standalone_player.play_media(path, is_video)
+                return
+            
+            next_index += 1
+    
+    def toggle_continuous_playback(self, checked):
+        self.continuous_playback = checked
+        # Update the standalone player too
+        self.standalone_player.set_continuous_playback(checked)
+        cfg = read_config()
+        cfg["continuous_playback"] = checked
+        write_config(cfg)
+
+
+if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setApplicationName("Everything by mdfind")
+    app.setOrganizationName("AppleDragon")
+    
     window = MdfindApp()
     window.show()
-    sys.exit(app.exec())
+    
+    try:
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Application error: {e}")
