@@ -153,6 +153,10 @@ class SearchWorker(QThread):
                         files_info.append((os.path.basename(path), size_, mtime, path))
                     except Exception as e:
                         print(f"Error processing file {path}: {e}")
+                elif path and os.path.isdir(path):
+                    # If the path is a directory, add it to the list with size 0
+                    mtime = os.path.getmtime(path)
+                    files_info.append((os.path.basename(path), 0, mtime, path))
                 if idx % 10 == 0:
                     self.progress_signal.emit(min(100, idx % 100))
             self.process.wait()
@@ -443,6 +447,7 @@ class MdfindApp(QMainWindow):
         bookmarks_menu.addAction("Audio Files", self.bookmark_audio)
         bookmarks_menu.addAction("Images", self.bookmark_images)
         bookmarks_menu.addAction("Archives", self.bookmark_archives)
+        bookmarks_menu.addAction("Applications", self.bookmark_applications)
         
         # Search thread variables
         self.search_worker = None
@@ -1229,7 +1234,10 @@ class MdfindApp(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                os.remove(path)
+                if os.path.isdir(path):
+                    shutil.rmtree(path)  # Delete directory and contents
+                else:
+                    os.remove(path)  # Delete file
                 index = self.tree.indexOfTopLevelItem(self.tree.currentItem())
                 self.tree.takeTopLevelItem(index)
                 self.show_info("Deleted", f"File '{path}' deleted.")
@@ -1249,7 +1257,10 @@ class MdfindApp(QMainWindow):
             error_files = []
             for path in files:
                 try:
-                    os.remove(path)
+                    if os.path.isdir(path):
+                        shutil.rmtree(path)  # Delete directory and contents
+                    else:
+                        os.remove(path)  # Delete file
                 except Exception as e:
                     error_files.append(f"{path}: {str(e)}")
             for item in self.tree.selectedItems():
@@ -1685,7 +1696,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.2.0</p>
+<p><b>Version:</b> 1.2.1</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -1787,6 +1798,9 @@ class MdfindApp(QMainWindow):
         clause = 'kMDItemContentTypeTree = "public.archive"'
         self.start_search(extra_clause=clause)
 
+    def bookmark_applications(self):
+        clause = 'kMDItemContentType == "com.apple.application-bundle"'
+        self.start_search(extra_clause=clause)
 
     # Close the preview panel
     def close_preview(self):
