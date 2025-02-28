@@ -19,7 +19,7 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
     *   Images (JPEG, PNG, GIF with animation support, BMP, WEBP, HEIC)
     *   SVG files with proper scaling and centering
     *   Video files with playback controls
-    *   Audio files with visualizer
+    *   Audio files
 *   **Integrated Media Player:**
     *   Video and audio playback with standard controls
     *   Standalone player window for media files
