@@ -29,13 +29,23 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # 4. 使用 PyInstaller 打包
+      # 4. 使用 PyInstaller 打包两个架构
       - name: Build standalone application
         run: |
-          # 生成单文件可执行程序
-          pyinstaller --onefile everything.py
-          # 将 dist 目录打包成 zip 以便上传
-          zip -r everything-dist.zip dist
+          # 创建x86_64版本
+          pyinstaller --target-architecture x86_64 --onefile --windowed --noconsole everything.py
+          mkdir -p dist_x86_64
+          mv dist/everything dist_x86_64/
+          zip -r everything-x86_64.zip dist_x86_64
+
+          # 清理构建文件
+          rm -rf build dist
+
+          # 创建arm64版本
+          pyinstaller --target-architecture arm64 --onefile --windowed --noconsole everything.py
+          mkdir -p dist_arm64
+          mv dist/everything dist_arm64/
+          zip -r everything-arm64.zip dist_arm64
 
       # 5. 创建 GitHub Release
       - name: Create GitHub release
@@ -49,14 +59,24 @@ jobs:
           draft: false
           prerelease: false
 
-      # 6. 上传打包好的 zip 文件到 Release
-      - name: Upload release asset
-        id: upload_release_asset
+      # 6. 上传 x86_64 版本
+      - name: Upload x86_64 release asset
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # <-- Important for authentication!
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-dist.zip
-          asset_name: everything-dist.zip
+          asset_path: everything-x86_64.zip
+          asset_name: everything-x86_64.zip
+          asset_content_type: application/zip
+          
+      # 7. 上传 arm64 版本
+      - name: Upload arm64 release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-arm64.zip
+          asset_name: everything-arm64.zip
           asset_content_type: application/zip
