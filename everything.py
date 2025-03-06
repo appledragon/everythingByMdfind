@@ -1356,7 +1356,7 @@ class MdfindApp(QMainWindow):
             return
         directory = os.path.dirname(path)
         old_name = os.path.basename(path)
-        new_name, ok = QInputDialog.getText(self, "Rename File", f"Enter new name for {old_name}:")
+        new_name, ok = QInputDialog.getText(self, "Rename File", f"Enter new name for {old_name}:", QLineEdit.EchoMode.Normal, old_name)
         if ok and new_name:
             new_full_path = os.path.join(directory, new_name)
             try:
