@@ -192,6 +192,8 @@ class StandalonePlayerWindow(QMainWindow):
         if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
             self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         
+        self.video_widget.installEventFilter(self)
+        
         # Audio label for audio files
         self.audio_label = QLabel()
         self.audio_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -201,6 +203,8 @@ class StandalonePlayerWindow(QMainWindow):
         font.setBold(True)
         self.audio_label.setFont(font)
         self.audio_label.setVisible(False)
+        
+        self.audio_label.installEventFilter(self)
         
         # Media container to hold both video widget and audio label
         media_container = QWidget()
@@ -383,6 +387,13 @@ class StandalonePlayerWindow(QMainWindow):
     def get_playback_state(self):
         """Get the current playback state (playing/paused)"""
         return self.media_player.playbackState()
+    
+    def eventFilter(self, obj, event):
+        if event.type() == event.Type.MouseButtonPress and (obj == self.video_widget or obj == self.audio_label):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.toggle_play_pause()
+                return True
+        return super().eventFilter(obj, event)
 
 
 class MdfindApp(QMainWindow):
@@ -637,6 +648,8 @@ class MdfindApp(QMainWindow):
         if getattr(QVideoWidget, "setAspectRatioMode", None) is not None:
             self.video_widget.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         
+        self.video_widget.installEventFilter(self)
+        
         self.audio_label = QLabel()
         self.audio_label.setFixedSize(500, 400)
         self.audio_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -647,6 +660,8 @@ class MdfindApp(QMainWindow):
         font.setBold(True)
         self.audio_label.setFont(font)
         self.audio_label.setVisible(False)
+        
+        self.audio_label.installEventFilter(self)
         
         media_layout.addWidget(self.video_widget, alignment=Qt.AlignmentFlag.AlignCenter)
         media_layout.addWidget(self.audio_label, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -2011,6 +2026,13 @@ class MdfindApp(QMainWindow):
         cfg = read_config()
         cfg["continuous_playback"] = checked
         write_config(cfg)
+
+    def eventFilter(self, obj, event):
+        if event.type() == event.Type.MouseButtonPress and (obj == self.video_widget or obj == self.audio_label):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.toggle_play_pause()
+                return True
+        return super().eventFilter(obj, event)
 
 
 if __name__ == "__main__":
