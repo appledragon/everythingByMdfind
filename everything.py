@@ -176,7 +176,120 @@ class SearchWorker(QThread):
                 pass
 
 
-# standalone player window
+class MediaPlayerManager:
+    """Manages media playback functionality shared between embedded and standalone players"""
+    
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.audio_output = QAudioOutput()
+        self.media_player = QMediaPlayer()
+        self.audio_output.setVolume(0.7)  # Default 70%
+        self.video_extensions = set()
+        self.audio_extensions = set()
+        self.current_media_path = None
+        self.slider_dragging = False
+        self.was_playing = False
+        
+    def setup_extensions(self, video_ext, audio_ext):
+        """Set up the video and audio extensions"""
+        self.video_extensions = video_ext
+        self.audio_extensions = audio_ext
+    
+    def set_video_output(self, video_widget):
+        """Set the video output widget"""
+        self.media_player.setVideoOutput(video_widget)
+        self.media_player.setAudioOutput(self.audio_output)
+    
+    def play_media(self, path, is_audio=False):
+        """Play a media file"""
+        self.current_media_path = path
+        self.media_player.setSource(QUrl.fromLocalFile(path))
+        self.media_player.play()
+        return True
+    
+    def stop(self):
+        """Stop media playback"""
+        self.media_player.stop()
+        self.current_media_path = None
+    
+    def pause(self):
+        """Pause media playback"""
+        self.media_player.pause()
+    
+    def toggle_play_pause(self):
+        """Toggle between play and pause states"""
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+            return False
+        else:
+            self.media_player.play()
+            return True
+    
+    def set_position(self, position):
+        """Set the playback position"""
+        self.media_player.setPosition(position)
+    
+    def get_position(self):
+        """Get the current playback position"""
+        return self.media_player.position()
+    
+    def get_duration(self):
+        """Get the media duration"""
+        return self.media_player.duration()
+    
+    def set_volume(self, volume_percent):
+        """Set volume as a percentage (0-100)"""
+        self.audio_output.setVolume(volume_percent / 100.0)
+    
+    def toggle_mute(self):
+        """Toggle audio mute state"""
+        current_mute = self.audio_output.isMuted()
+        self.audio_output.setMuted(not current_mute)
+        return not current_mute
+    
+    def is_muted(self):
+        """Check if audio is muted"""
+        return self.audio_output.isMuted()
+    
+    def get_volume(self):
+        """Get current volume as percentage (0-100)"""
+        return int(self.audio_output.volume() * 100)
+    
+    def on_slider_pressed(self):
+        """Handle slider press event"""
+        self.slider_dragging = True
+        self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        if self.was_playing:
+            self.media_player.pause()
+    
+    def on_slider_released(self):
+        """Handle slider release event"""
+        self.slider_dragging = False
+        if self.was_playing:
+            self.media_player.play()
+    
+    def is_audio_file(self, path):
+        """Check if file is an audio file based on extension"""
+        _, ext = os.path.splitext(path)
+        return ext.lower() in self.audio_extensions
+    
+    def is_video_file(self, path):
+        """Check if file is a video file based on extension"""
+        _, ext = os.path.splitext(path)
+        return ext.lower() in self.video_extensions
+    
+    def is_media_file(self, path):
+        """Check if file is either audio or video"""
+        return self.is_audio_file(path) or self.is_video_file(path)
+    
+    def connect_signals(self, position_callback, duration_callback, state_callback):
+        """Connect signal handlers for the media player"""
+        self.media_player.positionChanged.connect(position_callback)
+        self.media_player.durationChanged.connect(duration_callback)
+        self.media_player.playbackStateChanged.connect(state_callback)
+
+
+# Update StandalonePlayerWindow to use MediaPlayerManager
 class StandalonePlayerWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -247,36 +360,33 @@ class StandalonePlayerWindow(QMainWindow):
         
         main_layout.addLayout(controls_layout)
         
-        # Media player setup
-        self.audio_output = QAudioOutput()
-        self.media_player = QMediaPlayer()
-        self.media_player.setVideoOutput(self.video_widget)
-        self.media_player.setAudioOutput(self.audio_output)
-        self.audio_output.setVolume(0.7)  # 70% volume
+        # Create the media player manager
+        self.player_manager = MediaPlayerManager(self)
+        self.player_manager.set_video_output(self.video_widget)
         
         # Connect signals
         self.play_button.clicked.connect(self.toggle_play_pause)
-        self.seek_slider.sliderMoved.connect(self.set_position)
-        self.seek_slider.sliderPressed.connect(self.on_slider_pressed)
-        self.seek_slider.sliderReleased.connect(self.on_slider_released)
+        self.seek_slider.sliderMoved.connect(self.player_manager.set_position)
+        self.seek_slider.sliderPressed.connect(self.player_manager.on_slider_pressed)
+        self.seek_slider.sliderReleased.connect(self.player_manager.on_slider_released)
         self.volume_button.clicked.connect(self.toggle_mute)
-        self.volume_slider.valueChanged.connect(self.set_volume)
-        self.media_player.positionChanged.connect(self.update_position)
-        self.media_player.durationChanged.connect(self.update_duration)
-        self.media_player.playbackStateChanged.connect(self.on_playback_state_changed)
+        self.volume_slider.valueChanged.connect(self.player_manager.set_volume)
+        
+        # Connect media player signals
+        self.player_manager.connect_signals(
+            self.update_position, 
+            self.update_duration,
+            self.on_playback_state_changed
+        )
         
         self.setCentralWidget(central_widget)
-        self.slider_dragging = False
         self.continuous_playback = False
         self.dark_mode = False
         self.current_media_path = None
-        self.video_extensions = set()
-        self.audio_extensions = set()
         
     def setup_extensions(self, video_ext, audio_ext):
         """Set up the video and audio extensions from the parent app"""
-        self.video_extensions = video_ext
-        self.audio_extensions = audio_ext
+        self.player_manager.setup_extensions(video_ext, audio_ext)
         
     def set_continuous_playback(self, enabled):
         """Set whether continuous playback is enabled"""
@@ -307,27 +417,21 @@ class StandalonePlayerWindow(QMainWindow):
                                     f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>"
                                     f"{filename}</div></div>")
         
-        self.media_player.setSource(QUrl.fromLocalFile(path))
-        self.media_player.play()
+        # Use the player manager to play the media
+        self.player_manager.play_media(path)
         self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         
     def toggle_play_pause(self):
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.media_player.pause()
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        else:
-            self.media_player.play()
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
-    
-    def set_position(self, position):
-        self.media_player.setPosition(position)
+        is_playing = self.player_manager.toggle_play_pause()
+        icon = QStyle.StandardPixmap.SP_MediaPause if is_playing else QStyle.StandardPixmap.SP_MediaPlay
+        self.play_button.setIcon(self.style().standardIcon(icon))
     
     def update_position(self, position):
         try:
-            if not self.slider_dragging:
+            if not self.player_manager.slider_dragging:
                 self.seek_slider.setValue(position)
             
-            total_duration = self.media_player.duration()
+            total_duration = self.player_manager.get_duration()
             current_mins = position // 60000
             current_secs = (position % 60000) // 1000
             total_mins = total_duration // 60000
@@ -342,36 +446,17 @@ class StandalonePlayerWindow(QMainWindow):
         if duration > 0:
             self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
     
-    def set_volume(self, volume):
-        self.audio_output.setVolume(volume / 100.0)
-        if volume == 0:
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
-        else:
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
-    
     def toggle_mute(self):
-        if self.audio_output.isMuted():
-            self.audio_output.setMuted(False)
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
-            self.volume_slider.setValue(int(self.audio_output.volume() * 100))
-        else:
-            self.audio_output.setMuted(True)
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
-    
-    def on_slider_pressed(self):
-        self.slider_dragging = True
-        self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        if self.was_playing:
-            self.media_player.pause()
-    
-    def on_slider_released(self):
-        self.slider_dragging = False
-        if self.was_playing:
-            self.media_player.play()
+        is_muted = self.player_manager.toggle_mute()
+        icon = QStyle.StandardPixmap.SP_MediaVolumeMuted if is_muted else QStyle.StandardPixmap.SP_MediaVolume
+        self.volume_button.setIcon(self.style().standardIcon(icon))
+        
+        if not is_muted:
+            self.volume_slider.setValue(self.player_manager.get_volume())
     
     def on_playback_state_changed(self, state):
         if state == QMediaPlayer.PlaybackState.StoppedState:
-            if self.continuous_playback and self.media_player.position() > 0:
+            if self.continuous_playback and self.player_manager.get_position() > 0:
                 # Signal to the main app that we need to play the next media
                 self.parent().play_next_in_standalone()
     
@@ -382,11 +467,11 @@ class StandalonePlayerWindow(QMainWindow):
         
     def get_current_position(self):
         """Get the current position of the media player"""
-        return self.media_player.position()
+        return self.player_manager.get_position()
     
     def get_playback_state(self):
         """Get the current playback state (playing/paused)"""
-        return self.media_player.playbackState()
+        return self.player_manager.media_player.playbackState()
     
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress and (obj == self.video_widget or obj == self.audio_label):
@@ -801,6 +886,22 @@ class MdfindApp(QMainWindow):
         self.standalone_player.setup_extensions(self.video_extensions, self.audio_extensions)
         self.standalone_player.set_continuous_playback(self.continuous_playback)
         self.standalone_player.set_dark_mode(self.dark_mode)
+        
+        # Create the media player manager for embedded player
+        self.player_manager = MediaPlayerManager(self)
+        
+        # Set up media player
+        self.audio_output = self.player_manager.audio_output
+        self.media_player = self.player_manager.media_player
+        self.player_manager.set_video_output(self.video_widget)
+        self.player_manager.connect_signals(
+            self.update_position,
+            self.update_duration,
+            self.on_playback_state_changed
+        )
+        
+        # Set up recognized extensions in the player manager
+        self.player_manager.setup_extensions(self.video_extensions, self.audio_extensions)
 
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
@@ -810,8 +911,8 @@ class MdfindApp(QMainWindow):
         
         selected_items = self.tree.selectedItems()
         if not selected_items or len(selected_items) != 1:
-            # For multiple or no selection: stop video/audio playback and clear preview
-            self.media_player.stop()
+            # For multiple or no selection: stop media playback and clear preview
+            self.player_manager.stop()
             self.preview_stack.setCurrentIndex(0)
             self.text_preview.setPlainText("")
             self.media_info.setPlainText("")  # Clear bottom pane
@@ -819,14 +920,14 @@ class MdfindApp(QMainWindow):
 
         path = selected_items[0].text(3)
         if not os.path.isfile(path):
-            self.media_player.stop()
+            self.player_manager.stop()
             self.preview_stack.setCurrentIndex(0)
             self.text_preview.setPlainText("No preview available.")
             self.media_info.setPlainText("")
             return
 
-        # Stop previous video/audio playback
-        self.media_player.stop()
+        # Stop previous media playback
+        self.player_manager.stop()
         
         # If standalone player is active, use it instead
         if self.standalone_player_active:
@@ -834,141 +935,142 @@ class MdfindApp(QMainWindow):
             return
 
         # Display basic file info in the bottom pane
+        self.display_file_info(path)
+
+        # Check file extension for preview type
+        _, ext = os.path.splitext(path)
+        ext = ext.lower()
+
+        if ext in self.image_extensions or ext == ".svg":
+            self.display_image_preview(path, ext)
+        elif ext in self.video_extensions:
+            self.display_video_preview(path)
+        elif ext in self.audio_extensions:
+            self.display_audio_preview(path)
+        else:
+            self.display_text_preview(path)
+
+    def display_file_info(self, path):
+        """Display basic file information in the info pane"""
         file_stat = os.stat(path)
         size_kb = round(file_stat.st_size / 1024, 2)
         self.media_info.setPlainText(
             f"File: {path}\nSize: {size_kb} KB\nLast Modified: {time.ctime(file_stat.st_mtime)}"
         )
-
-        # Check file extension
-        _, ext = os.path.splitext(path)
-        ext = ext.lower()
-
-        if ext in self.image_extensions or ext == ".svg":
-            # Support for GIF preview added
-            if ext == ".gif":
-                movie = QMovie(path)
-                self.image_label.setMovie(movie)
-                movie.start()
-                # Show resolution info from the current frame if available
-                pix = movie.currentPixmap()
-                self.media_info.appendPlainText(
-                    f"Resolution: {pix.width()} x {pix.height()}"
-                )
-            elif ext == ".svg":
-                renderer = QSvgRenderer(path)
-                default_size = renderer.defaultSize()
-                container_size = self.image_label.size()
-                ratio = min(container_size.width() / default_size.width(), 
-                            container_size.height() / default_size.height())
-                new_width = int(default_size.width() * ratio)
-                new_height = int(default_size.height() * ratio)
-                pixmap = QPixmap(new_width, new_height)
-                pixmap.fill(Qt.GlobalColor.transparent)
-                painter = QPainter(pixmap)
-                renderer.render(painter)
-                painter.end()
-                self.image_label.setPixmap(pixmap)
-                self.media_info.appendPlainText(
-                    f"Resolution: {new_width} x {new_height}"
-                )
-            else:
-                pixmap = QPixmap(path)
-                # Scale down using KeepAspectRatio if pixmap is larger than image_label
-                if (pixmap.width() > self.image_label.width()) or (pixmap.height() > self.image_label.height()):
-                    pixmap = pixmap.scaled(
-                        self.image_label.size(),
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                self.image_label.setPixmap(pixmap)
-                self.media_info.appendPlainText(
-                    f"Resolution: {pixmap.width()} x {pixmap.height()}"
-                )
-            self.preview_stack.setCurrentIndex(1)
-        elif ext in self.video_extensions:
-            # Reset controls before loading new media
-            self.seek_slider.setValue(0)
-            self.seek_slider.setRange(0, 0)
-            self.time_label.setText("00:00 / 00:00")
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-            
-            # Load and play the media
-            self.media_player.setSource(QUrl.fromLocalFile(path))
-            # Make video widget visible for video files
-            self.video_widget.setVisible(True)
-            # Hide audio label
-            self.audio_label.setVisible(False)
-            self.media_player.play()
-            self.preview_stack.setCurrentIndex(2)
-        elif ext in self.audio_extensions:
-            # Reset controls before loading new audio
-            self.seek_slider.setValue(0)
-            self.seek_slider.setRange(0, 0)
-            self.time_label.setText("00:00 / 00:00")
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-            
-            self.media_player.setSource(QUrl.fromLocalFile(path))
-            self.video_widget.setVisible(False)
-            self.audio_label.setVisible(True)
-            filename = os.path.basename(path)
-            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                                    f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
-                                    f"</div>")
-            self.media_player.play()
-            self.preview_stack.setCurrentIndex(2)
+        
+    def display_image_preview(self, path, ext):
+        """Handle display of image files"""
+        if ext == ".gif":
+            movie = QMovie(path)
+            self.image_label.setMovie(movie)
+            movie.start()
+            # Show resolution info from the current frame if available
+            pix = movie.currentPixmap()
+            self.media_info.appendPlainText(
+                f"Resolution: {pix.width()} x {pix.height()}"
+            )
+        elif ext == ".svg":
+            renderer = QSvgRenderer(path)
+            default_size = renderer.defaultSize()
+            container_size = self.image_label.size()
+            ratio = min(container_size.width() / default_size.width(), 
+                        container_size.height() / default_size.height())
+            new_width = int(default_size.width() * ratio)
+            new_height = int(default_size.height() * ratio)
+            pixmap = QPixmap(new_width, new_height)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            renderer.render(painter)
+            painter.end()
+            self.image_label.setPixmap(pixmap)
+            self.media_info.appendPlainText(
+                f"Resolution: {new_width} x {new_height}"
+            )
         else:
-            # Try to display as text
-            try:
-                with open(path, 'rb') as f:
-                    chunk = f.read(512)
-                chunk.decode('utf-8')
-                with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                    content = f.read(4096)
-                self.text_preview.setPlainText(content)
-                self.preview_stack.setCurrentIndex(0)
-            except:
-                self.text_preview.setPlainText("No preview available.")
-                self.preview_stack.setCurrentIndex(0)
-                
-    def on_media_status_changed(self, status):
-        if status == QMediaPlayer.MediaStatus.LoadedMedia:
-            self.update_video_info()
-            
-    def update_video_info(self):
-        size = self.media_player.videoSink().videoSize()
-        duration_secs = self.media_player.duration() // 1000
-        # Skip if resolution is invalid
-        if size.width() <= 0 or size.height() <= 0:
-            return
-            
-        self.media_info.appendPlainText(
-            f"\nResolution: {size.width()} x {size.height()}\n"
-            f"Duration: {duration_secs} seconds"
-        )
+            pixmap = QPixmap(path)
+            # Scale down using KeepAspectRatio if pixmap is larger than image_label
+            if (pixmap.width() > self.image_label.width()) or (pixmap.height() > self.image_label.height()):
+                pixmap = pixmap.scaled(
+                    self.image_label.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+            self.image_label.setPixmap(pixmap)
+            self.media_info.appendPlainText(
+                f"Resolution: {pixmap.width()} x {pixmap.height()}"
+            )
+        self.preview_stack.setCurrentIndex(1)
+        
+    def display_video_preview(self, path):
+        """Handle display of video files"""
+        # Reset controls before loading new media
+        self.seek_slider.setValue(0)
+        self.seek_slider.setRange(0, 0)
+        self.time_label.setText("00:00 / 00:00")
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        
+        # Make video widget visible for video files
+        self.video_widget.setVisible(True)
+        self.audio_label.setVisible(False)
+        
+        # Play the media
+        self.player_manager.play_media(path)
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+        self.preview_stack.setCurrentIndex(2)
+        
+    def display_audio_preview(self, path):
+        """Handle display of audio files"""
+        # Reset controls before loading new audio
+        self.seek_slider.setValue(0)
+        self.seek_slider.setRange(0, 0)
+        self.time_label.setText("00:00 / 00:00")
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        
+        # Hide video, show audio label
+        self.video_widget.setVisible(False)
+        self.audio_label.setVisible(True)
+        
+        # Set audio label text
+        filename = os.path.basename(path)
+        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
+                                f"</div>")
+        
+        # Play the media
+        self.player_manager.play_media(path)
+        self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
+        self.preview_stack.setCurrentIndex(2)
+        
+    def display_text_preview(self, path):
+        """Handle display of text files"""
+        try:
+            with open(path, 'rb') as f:
+                chunk = f.read(512)
+            chunk.decode('utf-8')
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read(4096)
+            self.text_preview.setPlainText(content)
+            self.preview_stack.setCurrentIndex(0)
+        except:
+            self.text_preview.setPlainText("No preview available.")
+            self.preview_stack.setCurrentIndex(0)
 
     # === Video Player Control Methods ===
     def toggle_play_pause(self):
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.media_player.pause()
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        else:
-            self.media_player.play()
-            self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
-    
-    def is_slider_dragging(self, dragging):
-        self.slider_dragging = dragging
+        is_playing = self.player_manager.toggle_play_pause()
+        icon = QStyle.StandardPixmap.SP_MediaPause if is_playing else QStyle.StandardPixmap.SP_MediaPlay
+        self.play_button.setIcon(self.style().standardIcon(icon))
     
     def set_position(self, position):
-        self.media_player.setPosition(position)
+        self.player_manager.set_position(position)
     
     def update_position(self, position):
         try:
-            if not self.slider_dragging:
+            if not self.player_manager.slider_dragging:
                 self.seek_slider.setValue(position)
             
             # Update time label
-            total_duration = self.media_player.duration()
+            total_duration = self.player_manager.get_duration()
             
             # Convert milliseconds to MM:SS format
             current_mins = position // 60000
@@ -977,7 +1079,7 @@ class MdfindApp(QMainWindow):
             total_secs = (total_duration % 60000) // 1000
             
             self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
-        except Exception as e:
+        except Exception:
             # Silently handle errors during position update to prevent player crashes
             pass
         
@@ -990,8 +1092,7 @@ class MdfindApp(QMainWindow):
             self.update_video_info()
     
     def set_volume(self, volume):
-        # Convert 0-100 range to 0.0-1.0
-        self.audio_output.setVolume(volume / 100.0)
+        self.player_manager.set_volume(volume)
         
         # Update volume button icon based on volume level
         if volume == 0:
@@ -1000,27 +1101,19 @@ class MdfindApp(QMainWindow):
             self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
     
     def toggle_mute(self):
-        if self.audio_output.isMuted():
-            self.audio_output.setMuted(False)
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolume))
-            self.volume_slider.setValue(int(self.audio_output.volume() * 100))
-        else:
-            self.audio_output.setMuted(True)
-            self.volume_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaVolumeMuted))
+        is_muted = self.player_manager.toggle_mute()
+        icon = QStyle.StandardPixmap.SP_MediaVolumeMuted if is_muted else QStyle.StandardPixmap.SP_MediaVolume
+        self.volume_button.setIcon(self.style().standardIcon(icon))
+        
+        if not is_muted:
+            self.volume_slider.setValue(self.player_manager.get_volume())
     
     def on_slider_pressed(self):
-        self.slider_dragging = True
-        # Store current playing state
-        self.was_playing = self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        if self.was_playing:
-            self.media_player.pause()
+        self.player_manager.on_slider_pressed()
     
     def on_slider_released(self):
-        self.slider_dragging = False
-        # Restore playing state if it was playing before
-        if self.was_playing:
-            self.media_player.play()
-        
+        self.player_manager.on_slider_released()
+    
     # ========== Lazy loading ==========
     def check_scroll_position(self):
         scrollbar = self.tree.verticalScrollBar()
@@ -2033,6 +2126,23 @@ class MdfindApp(QMainWindow):
                 self.toggle_play_pause()
                 return True
         return super().eventFilter(obj, event)
+    
+    def update_video_info(self):
+        """Update the media info panel with video metadata"""
+        if not hasattr(self.media_player, 'videoSink') or not self.media_player.videoSink():
+            return
+            
+        size = self.media_player.videoSink().videoSize()
+        duration_secs = self.media_player.duration() // 1000
+        
+        # Skip if resolution is invalid
+        if size.width() <= 0 or size.height() <= 0:
+            return
+            
+        self.media_info.appendPlainText(
+            f"\nResolution: {size.width()} x {size.height()}\n"
+            f"Duration: {duration_secs} seconds"
+        )
 
 
 if __name__ == "__main__":
