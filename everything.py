@@ -1136,11 +1136,38 @@ class MdfindApp(QMainWindow):
             name, size, mtime, path = item
             display_size = format_size(size)
             display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
-            tree_item = QTreeWidgetItem([name, display_size, display_time, path])
+            
+            # emoji based on file type
+            if os.path.isdir(path):
+                display_name = f"📁 {name}"
+            else:
+                # Get file extension and add appropriate emoji
+                _, ext = os.path.splitext(name.lower())
+                if ext in self.image_extensions:
+                    display_name = f"📷 {name}"
+                elif ext in self.video_extensions:
+                    display_name = f"🎬 {name}"
+                elif ext in self.audio_extensions:
+                    display_name = f"🎵 {name}"
+                elif ext in ['.pdf', '.epub', '.mobi']:
+                    display_name = f"📚 {name}"
+                elif ext in ['.doc', '.docx', '.rtf', '.txt', '.md']:
+                    display_name = f"📝 {name}"
+                elif ext in ['.xls', '.xlsx', '.csv']:
+                    display_name = f"📊 {name}"
+                elif ext in ['.zip', '.rar', '.tar', '.gz', '.7z']:
+                    display_name = f"🗜️ {name}"
+                elif ext in ['.py', '.js', '.html', '.css', '.java', '.cpp', '.c', '.swift']:
+                    display_name = f"💻 {name}"
+                elif ext in ['.json', '.xml', '.yml', '.yaml', '.ini', '.conf']:
+                    display_name = f"⚙️ {name}"
+                else:
+                    display_name = f"📄 {name}"
+            
+            tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
             self.tree.addTopLevelItem(tree_item)
         
         self.current_loaded = end_idx
-
     # ========== Search handling ==========
     def on_query_changed(self):
         self.search_timer.start(DEBOUNCE_DELAY)
