@@ -500,6 +500,11 @@ class MdfindApp(QMainWindow):
         size = config.get("window_size", {"width": 1920, "height": 1080})
         self.resize(size["width"], size["height"])
 
+        # Define recognizable extensions before initializing extension emoji map
+        self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
+        self.video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".mpeg"}
+        self.audio_extensions = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".caf",".aif",".m4r",".au"}
+
         # ========== Menu Bar ==========
         menubar = self.menuBar()
         help_menu = menubar.addMenu('Help')
@@ -554,6 +559,8 @@ class MdfindApp(QMainWindow):
         self.all_file_data = []
         self.file_data = []
 
+        self.initialize_extension_emoji_map()
+        
         # ======= Main layout: QSplitter, left for search/list and right for preview ===========
         splitter = QSplitter(self)
         splitter.setOrientation(Qt.Orientation.Horizontal)
@@ -878,12 +885,6 @@ class MdfindApp(QMainWindow):
         self.current_loaded = 0
         self.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
 
-        # Recognizable extensions
-        self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
-        self.video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".mpg", ".mpeg"}
-        # Add audio extensions
-        self.audio_extensions = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma", ".caf",".aif",".m4r",".au"}
-    
         # Create the standalone player window but don't show it yet
         self.standalone_player = StandalonePlayerWindow(self)
         self.standalone_player_active = False
@@ -1125,6 +1126,28 @@ class MdfindApp(QMainWindow):
         scrollbar = self.tree.verticalScrollBar()
         if scrollbar.value() >= scrollbar.maximum() - 10:
             self.load_more_items()
+            
+    def initialize_extension_emoji_map(self):
+        """Create a mapping of file extensions to emoji icons for better performance"""
+        self.extension_emoji_map = {
+            # Images
+            **{ext: "📷" for ext in self.image_extensions},
+            # Videos
+            **{ext: "🎬" for ext in self.video_extensions},
+            # Audio
+            **{ext: "🎵" for ext in self.audio_extensions},
+            # Documents
+            **{ext: "📚" for ext in ['.pdf', '.epub', '.mobi']},
+            **{ext: "📝" for ext in ['.doc', '.docx', '.rtf', '.txt', '.md']},
+            # Spreadsheets
+            **{ext: "📊" for ext in ['.xls', '.xlsx', '.csv']},
+            # Archives
+            **{ext: "🗜️" for ext in ['.zip', '.rar', '.tar', '.gz', '.7z']},
+            # Code
+            **{ext: "💻" for ext in ['.py', '.js', '.html', '.css', '.java', '.cpp', '.c', '.swift']},
+            # Config
+            **{ext: "⚙️" for ext in ['.json', '.xml', '.yml', '.yaml', '.ini', '.conf']},
+        }
 
     def load_more_items(self):
         if not self.file_data or self.current_loaded >= len(self.file_data):
@@ -1143,27 +1166,8 @@ class MdfindApp(QMainWindow):
             else:
                 # Get file extension and add appropriate emoji
                 _, ext = os.path.splitext(name.lower())
-                if ext in self.image_extensions:
-                    display_name = f"📷 {name}"
-                elif ext in self.video_extensions:
-                    display_name = f"🎬 {name}"
-                elif ext in self.audio_extensions:
-                    display_name = f"🎵 {name}"
-                elif ext in ['.pdf', '.epub', '.mobi']:
-                    display_name = f"📚 {name}"
-                elif ext in ['.doc', '.docx', '.rtf', '.txt', '.md']:
-                    display_name = f"📝 {name}"
-                elif ext in ['.xls', '.xlsx', '.csv']:
-                    display_name = f"📊 {name}"
-                elif ext in ['.zip', '.rar', '.tar', '.gz', '.7z']:
-                    display_name = f"🗜️ {name}"
-                elif ext in ['.py', '.js', '.html', '.css', '.java', '.cpp', '.c', '.swift']:
-                    display_name = f"💻 {name}"
-                elif ext in ['.json', '.xml', '.yml', '.yaml', '.ini', '.conf']:
-                    display_name = f"⚙️ {name}"
-                else:
-                    display_name = f"📄 {name}"
-            
+                display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"     
+                       
             tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
             self.tree.addTopLevelItem(tree_item)
         
