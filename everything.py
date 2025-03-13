@@ -91,7 +91,7 @@ class SearchWorker(QThread):
     result_signal = pyqtSignal(list)
     error_signal = pyqtSignal(str)
     
-    def __init__(self, query, directory, search_by_file_name, match_case, full_match, extra_clause=None):
+    def __init__(self, query, directory, search_by_file_name, match_case, full_match, extra_clause=None, is_bookmark=False):
         super().__init__()
         self.query = query
         self.directory = directory
@@ -99,6 +99,7 @@ class SearchWorker(QThread):
         self.match_case = match_case
         self.full_match = full_match
         self.extra_clause = extra_clause
+        self.is_bookmark = is_bookmark
         self._is_running = True
         self.process = None
 
@@ -107,24 +108,27 @@ class SearchWorker(QThread):
         idx = 0
         cmd = ["mdfind"]
 
-
-        full_match_str = "" if self.full_match else "*"
-        case_modifier = "" if self.match_case else "cd"
-        if self.search_by_file_name:
-            query_str = f'kMDItemFSName == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
-            if self.extra_clause is not None:
-                query_str += f" && {self.extra_clause}"
+        # If it's a bookmark search, use only the extra clause
+        if self.is_bookmark and self.extra_clause is not None:
+            query_str = self.extra_clause
         else:
-            if self.query != "":
-                query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+            # Normal search behavior as before
+            full_match_str = "" if self.full_match else "*"
+            case_modifier = "" if self.match_case else "cd"
+            if self.search_by_file_name:
+                query_str = f'kMDItemFSName == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
                 if self.extra_clause is not None:
                     query_str += f" && {self.extra_clause}"
             else:
-                if self.extra_clause is not None:
-                    query_str = self.extra_clause
+                if self.query != "":
+                    query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+                    if self.extra_clause is not None:
+                        query_str += f" && {self.extra_clause}"
                 else:
-                    return
-
+                    if self.extra_clause is not None:
+                        query_str = self.extra_clause
+                    else:
+                        return
                     
         cmd.append(query_str)
 
@@ -836,6 +840,8 @@ class MdfindApp(QMainWindow):
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self.start_search)
         self.edit_query.textChanged.connect(self.on_query_changed)
+        # connect Enter key press
+        self.edit_query.returnPressed.connect(self.on_search_enter)
         self.edit_dir.textChanged.connect(self.on_dir_changed)
 
         self.chk_file_name.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
@@ -1142,10 +1148,12 @@ class MdfindApp(QMainWindow):
     def on_dir_changed(self):
         self.search_timer.start(DEBOUNCE_DELAY)
 
-    def start_search(self, extra_clause=None):
+    def start_search(self, extra_clause=None, is_bookmark=False):
         query = self.edit_query.text().strip()
         directory = self.edit_dir.text().strip()
-        if not query and extra_clause is None:
+        
+        # If not bookmark, no query, and no extra clause, clear results
+        if not is_bookmark and not query and extra_clause is None:
             self.tree.clear()
             self.lbl_items_found.setText("0 items found")
             return
@@ -1159,15 +1167,16 @@ class MdfindApp(QMainWindow):
             self.chk_file_name.isChecked(),
             self.chk_match_case.isChecked(),
             self.chk_full_match.isChecked(),
-            extra_clause  # Pass extra clause if provided.
+            extra_clause,  # Pass extra clause if provided
+            is_bookmark    # Pass the bookmark flag
         )
         self.search_worker.progress_signal.connect(self.update_progress)
         self.search_worker.result_signal.connect(self.update_tree)
         self.search_worker.error_signal.connect(self.show_error)
         self.search_worker.start()
 
-        # Only update history if enabled
-        if self.history_enabled and query and query not in self.query_history:
+        # Only update history if enabled and not a bookmark search
+        if not is_bookmark and self.history_enabled and query and query not in self.query_history:
             self.query_history.insert(0, query)
             if len(self.query_history) > 100:
                 self.query_history.pop()
@@ -1888,27 +1897,27 @@ class MdfindApp(QMainWindow):
     # === Updated bookmark methods ===
     def bookmark_large_files(self):
         clause = 'kMDItemFSSize >= 52428800'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     def bookmark_videos(self):
         clause = 'kMDItemContentTypeTree = "public.movie"'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     def bookmark_audio(self):
         clause = 'kMDItemContentTypeTree = "public.audio"'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     def bookmark_images(self):
         clause = 'kMDItemContentTypeTree = "public.image"'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     def bookmark_archives(self):
         clause = 'kMDItemContentTypeTree = "public.archive"'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     def bookmark_applications(self):
         clause = 'kMDItemContentType == "com.apple.application-bundle"'
-        self.start_search(extra_clause=clause)
+        self.start_search(extra_clause=clause, is_bookmark=True)
 
     # Close the preview panel
     def close_preview(self):
@@ -2143,6 +2152,15 @@ class MdfindApp(QMainWindow):
             f"\nResolution: {size.width()} x {size.height()}\n"
             f"Duration: {duration_secs} seconds"
         )
+
+    def on_search_enter(self):
+        """Handle Enter key press in the search query field"""
+        query = self.edit_query.text().strip()
+        if query:  # Only search if the query isn't just whitespace
+            # Cancel any pending search timer
+            self.search_timer.stop()
+            # Execute search immediately
+            self.start_search()
 
 
 if __name__ == "__main__":
