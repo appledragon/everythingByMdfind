@@ -123,5 +123,5 @@ Apple Dragon
 *   Thanks to the PyQt6 team for providing a powerful and versatile GUI framework.
 *   Inspiration from other great file search tools.
 
-![image](https://github.com/user-attachments/assets/2b372510-ece7-44b6-ab4e-5a1898318517)
+![image](https://github.com/user-attachments/assets/7164998f-2d7c-4d29-9af1-cfd4cf962d02)
 
