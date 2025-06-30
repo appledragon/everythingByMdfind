@@ -10,12 +10,12 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
     QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
-    QSlider, QToolButton, QStyle
+    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont
+from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont, QColor
 from PyQt6.QtSvg import QSvgRenderer
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
@@ -36,6 +36,166 @@ def write_config(data):
             json.dump(data, f, indent=2)
     except:
         pass
+
+
+# Beautiful ToolTip class for showing confirmation messages
+class BeautifulToolTip(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(280, 80)
+        
+        # Create layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(25, 20, 25, 20)
+        
+        # Create label
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setWordWrap(True)
+        font = QFont()
+        font.setPointSize(16)
+        font.setBold(True)
+        font.setWeight(QFont.Weight.ExtraBold)
+        self.label.setFont(font)
+        
+        # Add text shadow effect to label
+        label_shadow = QGraphicsDropShadowEffect()
+        label_shadow.setBlurRadius(8)
+        label_shadow.setOffset(2, 2)
+        label_shadow.setColor(QColor(0, 0, 0, 180))
+        self.label.setGraphicsEffect(label_shadow)
+        
+        layout.addWidget(self.label)
+        
+        # Set up style
+        self.setup_style()
+        
+        # Add shadow effect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(30)
+        shadow.setOffset(0, 6)
+        shadow.setColor(QColor(0, 0, 0, 200))
+        self.setGraphicsEffect(shadow)
+        
+        # Animation
+        self.opacity_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.opacity_animation.setDuration(200)
+        self.opacity_animation.setEasingCurve(QEasingCurve.Type.OutQuad)
+        
+        # Auto-hide timer
+        self.hide_timer = QTimer()
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self.fade_out)
+        
+    def setup_style(self):
+        self.setStyleSheet("""
+            BeautifulToolTip {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 rgba(76, 175, 80, 200),
+                    stop: 1 rgba(56, 142, 60, 200));
+                border-radius: 15px;
+                border: 3px solid rgba(255, 255, 255, 120);
+            }
+            QLabel {
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+                background: transparent;
+                border: none;
+                padding: 2px;
+            }
+        """)
+    
+    def setup_dark_style(self):
+        self.setStyleSheet("""
+            BeautifulToolTip {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 rgba(33, 150, 243, 180),
+                    stop: 1 rgba(25, 118, 210, 180));
+                border-radius: 15px;
+                border: 3px solid rgba(255, 255, 255, 150);
+            }
+            QLabel {
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+                background: transparent;
+                border: none;
+                padding: 2px;
+            }
+        """)
+    
+    def show_message(self, message, parent_widget, duration=2000):
+        # Stop any existing animations and timers first
+        self.hide_timer.stop()
+        self.opacity_animation.stop()
+        
+        # Safely disconnect any existing signal connections to prevent conflicts
+        try:
+            self.opacity_animation.finished.disconnect()
+        except TypeError:
+            # No connections exist, which is fine
+            pass
+        
+        self.label.setText(message)
+        
+        # Position relative to parent widget
+        if parent_widget:
+            parent_rect = parent_widget.geometry()
+            parent_center = parent_widget.mapToGlobal(parent_rect.center())
+            
+            # Position tooltip above the center of parent widget
+            tooltip_x = parent_center.x() - self.width() // 2
+            tooltip_y = parent_center.y() - parent_rect.height() // 2 - self.height() - 20
+            
+            # Ensure tooltip stays within screen bounds
+            screen = QApplication.primaryScreen().geometry()
+            if tooltip_x < 10:
+                tooltip_x = 10
+            elif tooltip_x + self.width() > screen.width() - 10:
+                tooltip_x = screen.width() - self.width() - 10
+            
+            if tooltip_y < 10:
+                tooltip_y = parent_center.y() + parent_rect.height() // 2 + 20
+            
+            self.move(tooltip_x, tooltip_y)
+        
+        # Show with fade-in animation
+        self.setWindowOpacity(0.0)
+        self.show()
+        self.raise_()
+        
+        self.opacity_animation.setStartValue(0.0)
+        self.opacity_animation.setEndValue(1.0)
+        self.opacity_animation.start()
+        
+        # Auto-hide after duration
+        self.hide_timer.start(duration)
+    
+    def fade_out(self):
+        # Stop the hide timer to prevent conflicts
+        self.hide_timer.stop()
+        
+        self.opacity_animation.setStartValue(1.0)
+        self.opacity_animation.setEndValue(0.0)
+        
+        # Connect the finished signal only when we need it
+        self.opacity_animation.finished.connect(self.hide_and_cleanup)
+        self.opacity_animation.start()
+    
+    def hide_and_cleanup(self):
+        """Hide the tooltip and clean up signal connections"""
+        # Safely disconnect all signals to prevent conflicts
+        try:
+            self.opacity_animation.finished.disconnect()
+        except TypeError:
+            # No connections exist, which is fine
+            pass
+        self.hide()
+        # Reset opacity for next time
+        self.setWindowOpacity(1.0)
 
 
 # Custom Slider that responds to direct clicks
@@ -909,6 +1069,9 @@ class MdfindApp(QMainWindow):
         
         # Set up recognized extensions in the player manager
         self.player_manager.setup_extensions(self.video_extensions, self.audio_extensions)
+        
+        # Initialize beautiful tooltip for copy confirmations
+        self.tooltip = BeautifulToolTip(self)
 
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
@@ -1555,12 +1718,23 @@ class MdfindApp(QMainWindow):
             self.show_info("Success", f"Successfully renamed {success_count} files.")
 
     # ========== Copy path to clipboard ==========
+    def show_tooltip(self, message):
+        """Show a beautiful tooltip for copy confirmations"""
+        # Update tooltip style based on current theme
+        if self.dark_mode:
+            self.tooltip.setup_dark_style()
+        else:
+            self.tooltip.setup_style()
+        
+        # Show tooltip relative to the tree widget with longer duration
+        self.tooltip.show_message(message, self.tree, 2000)
+    
     def copy_full_path(self):
         path = self.get_selected_file()
         if not path:
             return
         QApplication.clipboard().setText(path)
-        self.show_info("Copied", "Full path copied to clipboard.")
+        self.show_tooltip("✅ Full path copied!")
 
     def copy_path_only(self):
         path = self.get_selected_file()
@@ -1568,7 +1742,7 @@ class MdfindApp(QMainWindow):
             return
         directory = os.path.dirname(path)
         QApplication.clipboard().setText(directory)
-        self.show_info("Copied", "Directory path copied to clipboard.")
+        self.show_tooltip("✅ Directory path copied!")
 
     def copy_file_name_only(self):
         path = self.get_selected_file()
@@ -1576,7 +1750,7 @@ class MdfindApp(QMainWindow):
             return
         filename = os.path.basename(path)
         QApplication.clipboard().setText(filename)
-        self.show_info("Copied", "File name copied to clipboard.")
+        self.show_tooltip("✅ File name copied!")
 
     # ========== Export to CSV ==========
     def export_to_csv(self):
@@ -2192,8 +2366,7 @@ class MdfindApp(QMainWindow):
             self.search_timer.stop()
             # Execute search immediately
             self.start_search()
-
-
+            
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setApplicationName("Everything by mdfind")
