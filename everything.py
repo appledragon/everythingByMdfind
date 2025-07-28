@@ -1123,7 +1123,18 @@ class MdfindApp(QMainWindow):
         current_index = self.tab_widget.currentIndex()
         if current_index == -1 or current_index not in self.search_tabs:
             return None
-        return self.search_tabs[current_index].tree
+        
+        # Safety check: ensure tab and tree are still valid
+        tab = self.search_tabs.get(current_index)
+        if tab and hasattr(tab, 'tree'):
+            try:
+                # Test if tree is still valid
+                tab.tree.topLevelItemCount()
+                return tab.tree
+            except RuntimeError:
+                # Tree widget is destroyed
+                return None
+        return None
     
     def get_current_tab(self):
         """Get the SearchTab instance of the currently active tab"""
@@ -1188,6 +1199,16 @@ class MdfindApp(QMainWindow):
             if tab.search_worker and tab.search_worker.isRunning():
                 tab.search_worker.stop()
                 tab.search_worker.wait()
+            
+            # Disconnect tree signals to prevent crashes
+            try:
+                tab.tree.itemSelectionChanged.disconnect()
+                tab.tree.customContextMenuRequested.disconnect()
+                tab.tree.itemDoubleClicked.disconnect()
+                tab.tree.header().sectionClicked.disconnect()
+                tab.tree.verticalScrollBar().valueChanged.disconnect()
+            except:
+                pass  # Ignore if already disconnected
             
             # Remove tab
             del self.search_tabs[index]
@@ -1275,8 +1296,14 @@ class MdfindApp(QMainWindow):
         tree = self.get_current_tree()
         if not tree:
             return
+        
+        # Safety check: ensure tree widget is still valid
+        try:
+            selected_items = tree.selectedItems()
+        except RuntimeError:
+            # Tree widget might be destroyed
+            return
             
-        selected_items = tree.selectedItems()
         if not selected_items or len(selected_items) != 1:
             # For multiple or no selection: stop media playback and clear preview
             self.player_manager.stop()
@@ -2452,7 +2479,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.3.0</p>
+<p><b>Version:</b> 1.3.1</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -2535,6 +2562,14 @@ class MdfindApp(QMainWindow):
             self.update_tab_style()
     
     def closeEvent(self, event):
+        # Clean up all tabs to prevent crashes
+        for index in list(self.search_tabs.keys()):
+            self.close_tab(index)
+        
+        # Stop media player
+        if hasattr(self, 'player_manager'):
+            self.player_manager.stop()
+        
         config = read_config()
         config["window_size"] = {"width": self.width(), "height": self.height()}
         write_config(config)
