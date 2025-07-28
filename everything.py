@@ -1132,7 +1132,7 @@ class MdfindApp(QMainWindow):
             return None
         return self.search_tabs[current_index]
     
-    def create_new_tab(self, query="", directory=""):
+    def create_new_tab(self, query="", directory="", tab_title=""):
         """Create a new search tab"""
         # Create SearchTab instance with current search parameters
         search_tab = SearchTab(
@@ -1159,11 +1159,16 @@ class MdfindApp(QMainWindow):
         search_tab.tree.header().sectionClicked.connect(self.on_header_clicked)
         search_tab.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
         
-        # Create tab title
-        tab_title = query if query else "New Search"
+        # Create tab title - use custom title if provided, otherwise use query or default
+        if tab_title:
+            final_tab_title = tab_title
+        elif query:
+            final_tab_title = query
+        else:
+            final_tab_title = "New Search"
         
         # Add tab to widget
-        index = self.tab_widget.addTab(search_tab.tree, tab_title)
+        index = self.tab_widget.addTab(search_tab.tree, final_tab_title)
         self.search_tabs[index] = search_tab
         self.tab_widget.setCurrentIndex(index)
         
@@ -1542,7 +1547,7 @@ class MdfindApp(QMainWindow):
     def on_dir_changed(self):
         self.search_timer.start(DEBOUNCE_DELAY)
 
-    def start_search(self, extra_clause=None, is_bookmark=False):
+    def start_search(self, extra_clause=None, is_bookmark=False, tab_title=""):
         query = self.edit_query.text().strip()
         directory = self.edit_dir.text().strip()
         
@@ -1551,7 +1556,7 @@ class MdfindApp(QMainWindow):
             return
 
         # Create a new tab for this search
-        search_tab = self.create_new_tab(query, directory)
+        search_tab = self.create_new_tab(query, directory, tab_title)
         
         # Stop any existing search in this tab
         if search_tab.search_worker is not None and search_tab.search_worker.isRunning():
@@ -2538,27 +2543,27 @@ class MdfindApp(QMainWindow):
     # === Updated bookmark methods ===
     def bookmark_large_files(self):
         clause = 'kMDItemFSSize >= 52428800'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Large Files")
 
     def bookmark_videos(self):
         clause = 'kMDItemContentTypeTree = "public.movie"'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Video Files")
 
     def bookmark_audio(self):
         clause = 'kMDItemContentTypeTree = "public.audio"'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Audio Files")
 
     def bookmark_images(self):
         clause = 'kMDItemContentTypeTree = "public.image"'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Images")
 
     def bookmark_archives(self):
         clause = 'kMDItemContentTypeTree = "public.archive"'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Archives")
 
     def bookmark_applications(self):
         clause = 'kMDItemContentType == "com.apple.application-bundle"'
-        self.start_search(extra_clause=clause, is_bookmark=True)
+        self.start_search(extra_clause=clause, is_bookmark=True, tab_title="Applications")
 
     # Close the preview panel
     def close_preview(self):
