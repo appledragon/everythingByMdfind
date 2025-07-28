@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
     QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
-    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect
+    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -240,6 +240,42 @@ def format_size(size):
             return f"{size:.2f} {unit}"
         size /= 1024
     return f"{size:.2f} TB"
+
+
+# Class to manage individual search tabs
+class SearchTab:
+    """Manages the data and widgets for a single search tab"""
+    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False):
+        # Search parameters
+        self.query = query
+        self.directory = directory
+        self.file_name_search = file_name_search
+        self.match_case = match_case
+        self.full_match = full_match
+        
+        # Search results data
+        self.all_file_data = []
+        self.file_data = []
+        self.current_loaded = 0
+        
+        # Create the tree widget for this tab
+        self.tree = DraggableTreeWidget()
+        self.tree.setColumnCount(4)
+        self.tree.setHeaderLabels(["Name", "Size", "Date Modified", "Path"])
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.tree.setSelectionBehavior(QTreeWidget.SelectionBehavior.SelectRows)
+        self.tree.setSortingEnabled(False)
+        self.tree.setColumnWidth(0, 200)
+        self.tree.setColumnWidth(1, 80)
+        self.tree.setColumnWidth(2, 130)
+        self.tree.setColumnWidth(3, 350)
+        
+        # Sort settings
+        self.sort_column = -1
+        self.sort_order = Qt.SortOrder.AscendingOrder
+        
+        # Search worker thread
+        self.search_worker = None
 
 
 # Thread class to run mdfind in the background.
@@ -714,11 +750,6 @@ class MdfindApp(QMainWindow):
         bookmarks_menu.addAction("Archives", self.bookmark_archives)
         bookmarks_menu.addAction("Applications", self.bookmark_applications)
         
-        # Search thread variables
-        self.search_worker = None
-        self.all_file_data = []
-        self.file_data = []
-
         self.initialize_extension_emoji_map()
         
         # ======= Main layout: QSplitter, left for search/list and right for preview ===========
@@ -784,21 +815,44 @@ class MdfindApp(QMainWindow):
         group_advanced.setLayout(adv_layout)
         left_layout.addWidget(group_advanced)
 
-        # Search results list
-        self.tree = DraggableTreeWidget()
-        self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels(["Name", "Size", "Date Modified", "Path"])
-        self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
-        self.tree.setSelectionBehavior(QTreeWidget.SelectionBehavior.SelectRows)
-        self.tree.setSortingEnabled(False)
-        self.tree.setColumnWidth(0, 200)
-        self.tree.setColumnWidth(1, 80)
-        self.tree.setColumnWidth(2, 130)
-        self.tree.setColumnWidth(3, 350)
-        self.tree.header().setSectionsClickable(True)
-        self.tree.header().setSortIndicatorShown(True)
-        self.tree.header().sectionClicked.connect(self.on_header_clicked)
-        left_layout.addWidget(self.tree, stretch=1)
+        # Search results tabs
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setUsesScrollButtons(True)  # Enable scroll buttons when tabs overflow
+        self.tab_widget.setMovable(True)  # Allow dragging tabs to reorder
+        
+
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+        
+        # Get screen width for tab sizing
+        screen = QApplication.primaryScreen()
+        screen_width = screen.size().width()
+        tab_width = screen_width // 8  # Tab width is 1/8 of screen width
+        
+        # Set tab style similar to Chrome
+        self.tab_width = tab_width
+        self.update_tab_style()
+        
+        # Set elide mode for long titles
+        self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
+        
+        # Set up context menu for tabs - on tab bar instead of tab widget
+        tab_bar = self.tab_widget.tabBar()
+        tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tab_bar.customContextMenuRequested.connect(self.show_tab_context_menu)
+        
+        # Create tab context menu
+        self.tab_context_menu = QMenu(self)
+        self.tab_context_menu.addAction("Close", self.close_current_tab)
+        self.tab_context_menu.addAction("Close Others", self.close_other_tabs)
+        self.tab_context_menu.addAction("Close to the Left", self.close_left_tabs)
+        self.tab_context_menu.addAction("Close to the Right", self.close_right_tabs)
+        
+        left_layout.addWidget(self.tab_widget, stretch=1)
+        
+        # Dictionary to store SearchTab instances by tab index
+        self.search_tabs = {}
 
         # Progress bar and Export button
         self.progress = QProgressBar()
@@ -990,12 +1044,8 @@ class MdfindApp(QMainWindow):
 
         # Load last sort settings from config
         config = read_config()
-        self.sort_column = config.get("sort_column", -1)
-        self.sort_order = Qt.SortOrder(config.get("sort_order", 0))  # 0 = Ascending, 1 = Descending
-
-        # If there was a saved column, show it in the UI
-        if self.sort_column != -1:
-            self.tree.header().setSortIndicator(self.sort_column, self.sort_order)
+        self.default_sort_column = config.get("sort_column", -1)
+        self.default_sort_order = Qt.SortOrder(config.get("sort_order", 0))  # 0 = Ascending, 1 = Descending
 
         self.query_history = config.get("query_history", [])
         self.query_completer = QCompleter(self.query_history)
@@ -1017,10 +1067,6 @@ class MdfindApp(QMainWindow):
         self.edit_min_size.textChanged.connect(self.reapply_filter)
         self.edit_max_size.textChanged.connect(self.reapply_filter)
         self.edit_extension.textChanged.connect(self.reapply_filter)
-        self.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self.show_context_menu)
-        self.tree.itemDoubleClicked.connect(self.open_with_default_app)
 
         self.single_context_menu = QMenu(self)
         self.single_context_menu.addAction("Open", self.open_with_default_app)
@@ -1042,8 +1088,6 @@ class MdfindApp(QMainWindow):
         self.multi_context_menu.addAction("Batch Rename", self.batch_rename_files)
 
         self.batch_size = 100
-        self.current_loaded = 0
-        self.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
 
         # Create the standalone player window but don't show it yet
         self.standalone_player = StandalonePlayerWindow(self)
@@ -1073,13 +1117,161 @@ class MdfindApp(QMainWindow):
         # Initialize beautiful tooltip for copy confirmations
         self.tooltip = BeautifulToolTip(self)
 
+    # ========== Tab Management ==========
+    def get_current_tree(self):
+        """Get the tree widget of the currently active tab"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index == -1 or current_index not in self.search_tabs:
+            return None
+        return self.search_tabs[current_index].tree
+    
+    def get_current_tab(self):
+        """Get the SearchTab instance of the currently active tab"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index == -1 or current_index not in self.search_tabs:
+            return None
+        return self.search_tabs[current_index]
+    
+    def create_new_tab(self, query="", directory=""):
+        """Create a new search tab"""
+        # Create SearchTab instance with current search parameters
+        search_tab = SearchTab(
+            query=query or self.edit_query.text().strip(),
+            directory=directory or self.edit_dir.text().strip(),
+            file_name_search=self.chk_file_name.isChecked(),
+            match_case=self.chk_match_case.isChecked(),
+            full_match=self.chk_full_match.isChecked()
+        )
+        
+        # Apply default sort settings
+        search_tab.sort_column = self.default_sort_column
+        search_tab.sort_order = self.default_sort_order
+        if self.default_sort_column != -1:
+            search_tab.tree.header().setSortIndicator(self.default_sort_column, self.default_sort_order)
+        
+        # Connect tree signals
+        search_tab.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
+        search_tab.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        search_tab.tree.customContextMenuRequested.connect(self.show_context_menu)
+        search_tab.tree.itemDoubleClicked.connect(self.open_with_default_app)
+        search_tab.tree.header().setSectionsClickable(True)
+        search_tab.tree.header().setSortIndicatorShown(True)
+        search_tab.tree.header().sectionClicked.connect(self.on_header_clicked)
+        search_tab.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
+        
+        # Create tab title
+        tab_title = query if query else "New Search"
+        
+        # Add tab to widget
+        index = self.tab_widget.addTab(search_tab.tree, tab_title)
+        self.search_tabs[index] = search_tab
+        self.tab_widget.setCurrentIndex(index)
+        
+        # Set custom close button for better visibility
+        self.update_tab_close_button(index)
+        
+        # Update tab widths for all tabs
+        self.update_tab_style()
+        
+        return search_tab
+    
+    def close_tab(self, index):
+        """Close a search tab"""
+        if index in self.search_tabs:
+            # Stop any running search
+            tab = self.search_tabs[index]
+            if tab.search_worker and tab.search_worker.isRunning():
+                tab.search_worker.stop()
+                tab.search_worker.wait()
+            
+            # Remove tab
+            del self.search_tabs[index]
+            self.tab_widget.removeTab(index)
+            
+            # Update indices for remaining tabs
+            new_tabs = {}
+            for i in range(self.tab_widget.count()):
+                old_index = None
+                for old_i, tab in self.search_tabs.items():
+                    if self.tab_widget.widget(i) == tab.tree:
+                        old_index = old_i
+                        break
+                if old_index is not None:
+                    new_tabs[i] = self.search_tabs[old_index]
+            self.search_tabs = new_tabs
+            
+            # Update tab widths after closing
+            if self.tab_widget.count() > 0:
+                self.update_tab_style()
+    
+    def on_tab_changed(self, index):
+        """Handle tab change event"""
+        if index >= 0:
+            # Update the preview panel based on the new tab's selection
+            self.on_tree_selection_changed()
+    
+    def show_tab_context_menu(self, pos):
+        """Show context menu for tabs"""
+        # Get the tab bar
+        tab_bar = self.tab_widget.tabBar()
+        
+        # Find which tab was clicked
+        self.context_menu_tab_index = tab_bar.tabAt(pos)
+        
+        if self.context_menu_tab_index >= 0:
+            # Show the context menu at the cursor position
+            global_pos = tab_bar.mapToGlobal(pos)
+            self.tab_context_menu.exec(global_pos)
+    
+    def close_current_tab(self):
+        """Close the tab that was right-clicked"""
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            self.close_tab(self.context_menu_tab_index)
+    
+    def close_other_tabs(self):
+        """Close all tabs except the one that was right-clicked"""
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            # Get all tab indices
+            tab_count = self.tab_widget.count()
+            tabs_to_close = []
+            
+            # Collect indices of tabs to close (all except the clicked one)
+            for i in range(tab_count):
+                if i != self.context_menu_tab_index:
+                    tabs_to_close.append(i)
+            
+            # Close tabs in reverse order to maintain correct indices
+            for i in reversed(tabs_to_close):
+                self.close_tab(i)
+    
+    def close_left_tabs(self):
+        """Close all tabs to the left of the clicked tab"""
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            # Close tabs in reverse order from the clicked tab to the first
+            for i in range(self.context_menu_tab_index - 1, -1, -1):
+                self.close_tab(i)
+    
+    def close_right_tabs(self):
+        """Close all tabs to the right of the clicked tab"""
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            # Get the current tab count
+            tab_count = self.tab_widget.count()
+            
+            # Close tabs in reverse order from the last to the one after clicked tab
+            for i in range(tab_count - 1, self.context_menu_tab_index, -1):
+                self.close_tab(i)
+
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
         # if preview is not visible, do nothing
         if not self.preview_container.isVisible():
             return
         
-        selected_items = self.tree.selectedItems()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+            
+        selected_items = tree.selectedItems()
         if not selected_items or len(selected_items) != 1:
             # For multiple or no selection: stop media playback and clear preview
             self.player_manager.stop()
@@ -1286,7 +1478,10 @@ class MdfindApp(QMainWindow):
     
     # ========== Lazy loading ==========
     def check_scroll_position(self):
-        scrollbar = self.tree.verticalScrollBar()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+        scrollbar = tree.verticalScrollBar()
         if scrollbar.value() >= scrollbar.maximum() - 10:
             self.load_more_items()
             
@@ -1312,11 +1507,16 @@ class MdfindApp(QMainWindow):
             **{ext: "⚙️" for ext in ['.json', '.xml', '.yml', '.yaml', '.ini', '.conf']},
         }
 
-    def load_more_items(self):
-        if not self.file_data or self.current_loaded >= len(self.file_data):
+    def load_more_items(self, search_tab=None):
+        if search_tab is None:
+            search_tab = self.get_current_tab()
+        if not search_tab:
             return
-        end_idx = min(self.current_loaded + self.batch_size, len(self.file_data))
-        items_to_load = self.file_data[self.current_loaded:end_idx]
+            
+        if not search_tab.file_data or search_tab.current_loaded >= len(search_tab.file_data):
+            return
+        end_idx = min(search_tab.current_loaded + self.batch_size, len(search_tab.file_data))
+        items_to_load = search_tab.file_data[search_tab.current_loaded:end_idx]
         
         for item in items_to_load:
             name, size, mtime, path = item
@@ -1332,9 +1532,9 @@ class MdfindApp(QMainWindow):
                 display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"     
                        
             tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
-            self.tree.addTopLevelItem(tree_item)
+            search_tab.tree.addTopLevelItem(tree_item)
         
-        self.current_loaded = end_idx
+        search_tab.current_loaded = end_idx
     # ========== Search handling ==========
     def on_query_changed(self):
         self.search_timer.start(DEBOUNCE_DELAY)
@@ -1346,17 +1546,20 @@ class MdfindApp(QMainWindow):
         query = self.edit_query.text().strip()
         directory = self.edit_dir.text().strip()
         
-        # If not bookmark, no query, and no extra clause, clear results
+        # If not bookmark, no query, and no extra clause, don't search
         if not is_bookmark and not query and extra_clause is None:
-            self.tree.clear()
-            self.lbl_items_found.setText("0 items found")
             return
 
-        if self.search_worker is not None and self.search_worker.isRunning():
-            self.search_worker.stop()
-            self.search_worker.wait()
+        # Create a new tab for this search
+        search_tab = self.create_new_tab(query, directory)
+        
+        # Stop any existing search in this tab
+        if search_tab.search_worker is not None and search_tab.search_worker.isRunning():
+            search_tab.search_worker.stop()
+            search_tab.search_worker.wait()
 
-        self.search_worker = SearchWorker(
+        # Create new search worker
+        search_tab.search_worker = SearchWorker(
             query, directory,
             self.chk_file_name.isChecked(),
             self.chk_match_case.isChecked(),
@@ -1364,10 +1567,10 @@ class MdfindApp(QMainWindow):
             extra_clause,  # Pass extra clause if provided
             is_bookmark    # Pass the bookmark flag
         )
-        self.search_worker.progress_signal.connect(self.update_progress)
-        self.search_worker.result_signal.connect(self.update_tree)
-        self.search_worker.error_signal.connect(self.show_error)
-        self.search_worker.start()
+        search_tab.search_worker.progress_signal.connect(self.update_progress)
+        search_tab.search_worker.result_signal.connect(lambda results: self.update_tree(results, search_tab))
+        search_tab.search_worker.error_signal.connect(self.show_error)
+        search_tab.search_worker.start()
 
         # Only update history if enabled and not a bookmark search
         if not is_bookmark and self.history_enabled and query and query not in self.query_history:
@@ -1382,12 +1585,17 @@ class MdfindApp(QMainWindow):
     def update_progress(self, value):
         self.progress.setValue(value)
 
-    def update_tree(self, files_info):
-        self.tree.clear()
-        self.all_file_data = files_info
-        self.current_loaded = 0
-        filtered_files = self.apply_filters_and_sorting(self.all_file_data)
-        self.file_data = filtered_files
+    def update_tree(self, files_info, search_tab=None):
+        if search_tab is None:
+            search_tab = self.get_current_tab()
+        if not search_tab:
+            return
+            
+        search_tab.tree.clear()
+        search_tab.all_file_data = files_info
+        search_tab.current_loaded = 0
+        filtered_files = self.apply_filters_and_sorting(search_tab.all_file_data)
+        search_tab.file_data = filtered_files
         
         if not filtered_files:
             self.lbl_items_found.setText("0 items found")
@@ -1395,27 +1603,28 @@ class MdfindApp(QMainWindow):
         
         self.lbl_items_found.setText(f"{len(filtered_files)} items found")
 
-        if getattr(self, 'sort_column', -1) != -1:
-            self.sort_data()
+        if search_tab.sort_column != -1:
+            self.sort_data(search_tab)
         else:
-            self.load_more_items()
+            self.load_more_items(search_tab)
 
     def show_error(self, msg):
         self.show_critical("Error", msg)
 
     # ========== Filtering and sorting ==========
     def reapply_filter(self):
-        if not self.all_file_data:
+        search_tab = self.get_current_tab()
+        if not search_tab or not search_tab.all_file_data:
             return
-        filtered_files = self.apply_filters_and_sorting(self.all_file_data)
-        self.file_data = filtered_files
-        self.tree.clear()
-        self.current_loaded = 0
+        filtered_files = self.apply_filters_and_sorting(search_tab.all_file_data)
+        search_tab.file_data = filtered_files
+        search_tab.tree.clear()
+        search_tab.current_loaded = 0
 
-        if getattr(self, 'sort_column', -1) != -1:
-            self.sort_data()
+        if search_tab.sort_column != -1:
+            self.sort_data(search_tab)
         else:
-            self.load_more_items()
+            self.load_more_items(search_tab)
 
         self.lbl_items_found.setText(f"{len(filtered_files)} items found")
 
@@ -1450,61 +1659,75 @@ class MdfindApp(QMainWindow):
         return filtered
 
     def on_header_clicked(self, column):
-        if getattr(self, 'sort_column', -1) == column:
-            self.sort_order = (Qt.SortOrder.DescendingOrder
-                               if self.sort_order == Qt.SortOrder.AscendingOrder
+        search_tab = self.get_current_tab()
+        if not search_tab:
+            return
+            
+        if search_tab.sort_column == column:
+            search_tab.sort_order = (Qt.SortOrder.DescendingOrder
+                               if search_tab.sort_order == Qt.SortOrder.AscendingOrder
                                else Qt.SortOrder.AscendingOrder)
         else:
-            self.sort_column = column
-            self.sort_order = Qt.SortOrder.AscendingOrder
-        self.tree.header().setSortIndicator(column, self.sort_order)
-        self.sort_data()
-        write_config({
-            "sort_column": self.sort_column,
-            "sort_order": 1 if self.sort_order == Qt.SortOrder.DescendingOrder else 0
-        })
+            search_tab.sort_column = column
+            search_tab.sort_order = Qt.SortOrder.AscendingOrder
+        search_tab.tree.header().setSortIndicator(column, search_tab.sort_order)
+        self.sort_data(search_tab)
 
-    def sort_data(self):
-        if not self.file_data or self.sort_column == -1:
+    def sort_data(self, search_tab=None):
+        if search_tab is None:
+            search_tab = self.get_current_tab()
+        if not search_tab:
+            return
+            
+        if not search_tab.file_data or search_tab.sort_column == -1:
             return
 
         def get_sort_key(item):
-            if self.sort_column == 0:
+            if search_tab.sort_column == 0:
                 return item[0].lower()
-            elif self.sort_column == 1:
+            elif search_tab.sort_column == 1:
                 return float(item[1])
-            elif self.sort_column == 2:
+            elif search_tab.sort_column == 2:
                 return float(item[2])
             else:
                 return item[3].lower()
 
-        self.file_data.sort(
+        search_tab.file_data.sort(
             key=get_sort_key,
-            reverse=(self.sort_order == Qt.SortOrder.DescendingOrder)
+            reverse=(search_tab.sort_order == Qt.SortOrder.DescendingOrder)
         )
-        self.tree.clear()
-        self.current_loaded = 0
-        self.load_more_items()
+        search_tab.tree.clear()
+        search_tab.current_loaded = 0
+        self.load_more_items(search_tab)
 
     # ========== Context menu logic ==========
     def show_context_menu(self, pos):
-        selected_items = self.tree.selectedItems()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+        selected_items = tree.selectedItems()
         if not selected_items:
             return
         if len(selected_items) == 1:
-            self.tree.setCurrentItem(selected_items[0])
-            self.single_context_menu.exec(self.tree.viewport().mapToGlobal(pos))
+            tree.setCurrentItem(selected_items[0])
+            self.single_context_menu.exec(tree.viewport().mapToGlobal(pos))
         else:
-            self.multi_context_menu.exec(self.tree.viewport().mapToGlobal(pos))
+            self.multi_context_menu.exec(tree.viewport().mapToGlobal(pos))
 
     def get_selected_file(self):
-        item = self.tree.currentItem()
+        tree = self.get_current_tree()
+        if not tree:
+            return None
+        item = tree.currentItem()
         if item:
             return item.text(3)
         return None
 
     def get_selected_files(self):
-        return [item.text(3) for item in self.tree.selectedItems()]
+        tree = self.get_current_tree()
+        if not tree:
+            return []
+        return [item.text(3) for item in tree.selectedItems()]
 
     # ========== File operations ==========
     def open_with_default_app(self):
@@ -1549,8 +1772,10 @@ class MdfindApp(QMainWindow):
                     shutil.rmtree(path)  # Delete directory and contents
                 else:
                     os.remove(path)  # Delete file
-                index = self.tree.indexOfTopLevelItem(self.tree.currentItem())
-                self.tree.takeTopLevelItem(index)
+                tree = self.get_current_tree()
+                if tree:
+                    index = tree.indexOfTopLevelItem(tree.currentItem())
+                    tree.takeTopLevelItem(index)
                 self.show_info("Deleted", f"File '{path}' deleted.")
             except Exception as e:
                 self.show_critical("Error", str(e))
@@ -1574,9 +1799,11 @@ class MdfindApp(QMainWindow):
                         os.remove(path)  # Delete file
                 except Exception as e:
                     error_files.append(f"{path}: {str(e)}")
-            for item in self.tree.selectedItems():
-                index = self.tree.indexOfTopLevelItem(item)
-                self.tree.takeTopLevelItem(index)
+            tree = self.get_current_tree()
+            if tree:
+                for item in tree.selectedItems():
+                    index = tree.indexOfTopLevelItem(item)
+                    tree.takeTopLevelItem(index)
             if error_files:
                 self.show_warning(
                     "Deletion Errors",
@@ -1628,8 +1855,10 @@ class MdfindApp(QMainWindow):
         if dest:
             try:
                 shutil.move(path, dest)
-                index = self.tree.indexOfTopLevelItem(self.tree.currentItem())
-                self.tree.takeTopLevelItem(index)
+                tree = self.get_current_tree()
+                if tree:
+                    index = tree.indexOfTopLevelItem(tree.currentItem())
+                    tree.takeTopLevelItem(index)
                 self.show_info("Moved", f"File '{path}' moved to '{dest}'.")
             except Exception as e:
                 self.show_critical("Error", str(e))
@@ -1647,10 +1876,12 @@ class MdfindApp(QMainWindow):
             try:
                 shutil.move(path, dest)
                 success_count += 1
-                for item in self.tree.selectedItems():
-                    if item.text(3) == path:
-                        index = self.tree.indexOfTopLevelItem(item)
-                        self.tree.takeTopLevelItem(index)
+                tree = self.get_current_tree()
+                if tree:
+                    for item in tree.selectedItems():
+                        if item.text(3) == path:
+                            index = tree.indexOfTopLevelItem(item)
+                            tree.takeTopLevelItem(index)
             except Exception as e:
                 error_files.append(f"{path}: {str(e)}")
         if error_files:
@@ -1672,9 +1903,18 @@ class MdfindApp(QMainWindow):
             new_full_path = os.path.join(directory, new_name)
             try:
                 os.rename(path, new_full_path)
-                current_item = self.tree.currentItem()
-                current_item.setText(0, new_name)
-                current_item.setText(3, new_full_path)
+                tree = self.get_current_tree()
+                if tree:
+                    current_item = tree.currentItem()
+                    if current_item:
+                        # Update display name with emoji
+                        _, ext = os.path.splitext(new_name.lower())
+                        if os.path.isdir(new_full_path):
+                            display_name = f"📁 {new_name}"
+                        else:
+                            display_name = f"{self.extension_emoji_map.get(ext, '📄')} {new_name}"
+                        current_item.setText(0, display_name)
+                        current_item.setText(3, new_full_path)
                 self.show_info("Success", "File renamed successfully.")
             except Exception as e:
                 self.show_critical("Error", f"Could not rename file: {str(e)}")
@@ -1692,7 +1932,10 @@ class MdfindApp(QMainWindow):
 
         error_files = []
         success_count = 0
-        selected_items = self.tree.selectedItems()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+        selected_items = tree.selectedItems()
 
         for item in selected_items:
             old_path = item.text(3)
@@ -1704,7 +1947,12 @@ class MdfindApp(QMainWindow):
             try:
                 os.rename(old_path, new_full_path)
                 success_count += 1
-                item.setText(0, new_name)
+                # Update display name with emoji
+                if os.path.isdir(new_full_path):
+                    display_name = f"📁 {new_name}"
+                else:
+                    display_name = f"{self.extension_emoji_map.get(ext.lower(), '📄')} {new_name}"
+                item.setText(0, display_name)
                 item.setText(3, new_full_path)
             except Exception as e:
                 error_files.append(f"{old_path} -> {new_full_path}: {str(e)}")
@@ -1727,7 +1975,9 @@ class MdfindApp(QMainWindow):
             self.tooltip.setup_style()
         
         # Show tooltip relative to the tree widget with longer duration
-        self.tooltip.show_message(message, self.tree, 2000)
+        tree = self.get_current_tree()
+        if tree:
+            self.tooltip.show_message(message, tree, 2000)
     
     def copy_full_path(self):
         path = self.get_selected_file()
@@ -1754,7 +2004,8 @@ class MdfindApp(QMainWindow):
 
     # ========== Export to CSV ==========
     def export_to_csv(self):
-        if not self.file_data:
+        search_tab = self.get_current_tab()
+        if not search_tab or not search_tab.file_data:
             self.show_warning("Warning", "No data to export.")
             return
         file_path, _ = QFileDialog.getSaveFileName(self, "Export to CSV", "", "CSV Files (*.csv);;All Files (*)")
@@ -1764,7 +2015,7 @@ class MdfindApp(QMainWindow):
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
-                for item in self.file_data:
+                for item in search_tab.file_data:
                     writer.writerow(item)
             self.show_info("Success", f"Results exported to {file_path}")
         except Exception as e:
@@ -1794,6 +2045,176 @@ class MdfindApp(QMainWindow):
         cfg = read_config()
         cfg["preview_enabled"] = checked
         write_config(cfg)
+    
+
+    
+    def update_tab_close_button(self, index):
+        """Update close button appearance for a specific tab"""
+        # Get the tab bar
+        tab_bar = self.tab_widget.tabBar()
+        
+        # Create a close button with better visibility
+        close_button = tab_bar.tabButton(index, tab_bar.ButtonPosition.RightSide)
+        if close_button:
+            # Set a tooltip
+            close_button.setToolTip("Close tab")
+            
+            # Add a style specifically for this button
+            if not self.dark_mode:
+                close_button.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        padding: 0px;
+                        margin: 0px;
+                        font-family: Arial;
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #666666;
+                    }
+                    QPushButton:hover {
+                        background: rgba(0, 0, 0, 0.1);
+                        border-radius: 8px;
+                        color: #333333;
+                    }
+                """)
+                close_button.setText("×")
+            else:
+                close_button.setStyleSheet("""
+                    QPushButton {
+                        background: transparent;
+                        border: none;
+                        padding: 0px;
+                        margin: 0px;
+                        font-family: Arial;
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #aaaaaa;
+                    }
+                    QPushButton:hover {
+                        background: rgba(255, 255, 255, 0.1);
+                        border-radius: 8px;
+                        color: #ffffff;
+                    }
+                """)
+                close_button.setText("×")
+    
+    def calculate_tab_width(self):
+        """Calculate optimal tab width based on number of tabs"""
+        tab_count = self.tab_widget.count()
+        if tab_count == 0:
+            return min(240, self.tab_width)  # Default to reasonable width
+        
+        # Get the tab bar width
+        tab_bar = self.tab_widget.tabBar()
+        available_width = tab_bar.width()
+        
+        # If tab bar width is not available yet, use window width
+        if available_width <= 0:
+            available_width = self.width() - 100
+        
+        # Reserve space for scroll buttons and some margin
+        available_width = available_width - 80
+        
+        # Define min and max tab widths
+        min_tab_width = 80
+        max_tab_width = 240
+        
+        # Calculate optimal width
+        optimal_width = available_width // tab_count
+        
+        # Clamp to min/max values
+        if optimal_width < min_tab_width:
+            return min_tab_width
+        elif optimal_width > max_tab_width:
+            return max_tab_width
+        else:
+            return optimal_width
+    
+    def update_tab_style(self):
+        """Update tab widget style based on current theme"""
+        # Calculate dynamic tab width
+        dynamic_tab_width = self.calculate_tab_width()
+        if self.dark_mode:
+            # Dark mode style
+            self.tab_widget.setStyleSheet(f"""
+                QTabWidget::pane {{
+                    border: 1px solid #555555;
+                    background: #2b2b2b;
+                }}
+                QTabBar {{
+                    alignment: left;
+                }}
+                QTabBar::tab {{
+                    background: #3c3f41;
+                    border: 1px solid #555555;
+                    border-bottom: none;
+                    padding: 8px 12px;
+                    margin-right: 2px;
+                    min-width: {dynamic_tab_width}px;
+                    max-width: {dynamic_tab_width}px;
+                    color: #f0f0f0;
+                }}
+                QTabBar::tab:selected {{
+                    background: #2b2b2b;
+                    border-color: #555555;
+                }}
+                QTabBar::tab:hover {{
+                    background: #4a4a4a;
+                }}
+                QTabBar::close-button {{
+                    subcontrol-position: right;
+                    subcontrol-origin: padding;
+                    padding: 4px;
+                    margin-right: 4px;
+                }}
+                QTabBar::close-button:hover {{
+                    background: #5a5a5a;
+                    border-radius: 2px;
+                }}
+            """)
+        else:
+            # Light mode style
+            self.tab_widget.setStyleSheet(f"""
+                QTabWidget::pane {{
+                    border: 1px solid #cccccc;
+                    background: white;
+                }}
+                QTabBar {{
+                    alignment: left;
+                }}
+                QTabBar::tab {{
+                    background: #f0f0f0;
+                    border: 1px solid #cccccc;
+                    border-bottom: none;
+                    padding: 8px 12px;
+                    margin-right: 2px;
+                    min-width: {dynamic_tab_width}px;
+                    max-width: {dynamic_tab_width}px;
+                    color: #000000;
+                }}
+                QTabBar::tab:selected {{
+                    background: white;
+                    border-color: #cccccc;
+                }}
+                QTabBar::tab:hover {{
+                    background: #e0e0e0;
+                }}
+                QTabBar::close-button {{
+                    subcontrol-position: right;
+                    subcontrol-origin: padding;
+                    padding: 4px;
+                    margin-right: 4px;
+                    background: transparent;
+                    border: none;
+                    width: 16px;
+                    height: 16px;
+                }}
+                QTabBar::close-button:hover {{
+                    background: rgba(0, 0, 0, 0.1);
+                    border-radius: 4px;
+                }}
+            """)
     
     def set_non_dark_mode(self):
         self.setStyleSheet("""
@@ -1986,10 +2407,18 @@ class MdfindApp(QMainWindow):
                 """)
 
     def toggle_dark_mode(self, checked):
+        self.dark_mode = checked
         if checked:
             self.set_dark_mode()
         else:
             self.set_non_dark_mode()
+            
+        # Update tab widget style
+        self.update_tab_style()
+        
+        # Update all tab close buttons
+        for i in range(self.tab_widget.count()):
+            self.update_tab_close_button(i)
             
         # Update the standalone player too
         self.standalone_player.set_dark_mode(checked)
@@ -2018,7 +2447,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.2.1</p>
+<p><b>Version:</b> 1.3.0</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -2093,6 +2522,13 @@ class MdfindApp(QMainWindow):
         self.apply_dialog_dark_mode(msg)
         return msg.exec()
 
+    def resizeEvent(self, event):
+        """Handle window resize events"""
+        super().resizeEvent(event)
+        # Update tab widths when window is resized
+        if hasattr(self, 'tab_widget') and self.tab_widget.count() > 0:
+            self.update_tab_style()
+    
     def closeEvent(self, event):
         config = read_config()
         config["window_size"] = {"width": self.width(), "height": self.height()}
@@ -2158,32 +2594,36 @@ class MdfindApp(QMainWindow):
     # method to play the next media file
     def play_next_media(self):
         # Get all items in the tree
-        item_count = self.tree.topLevelItemCount()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+            
+        item_count = tree.topLevelItemCount()
         if item_count == 0:
             return
 
         # Find the currently selected item
         current_index = -1
-        selected_items = self.tree.selectedItems()
+        selected_items = tree.selectedItems()
         if selected_items:
             current_item = selected_items[0]
             for i in range(item_count):
-                if self.tree.topLevelItem(i) == current_item:
+                if tree.topLevelItem(i) == current_item:
                     current_index = i
                     break
 
         # Find the next media file
         next_index = current_index + 1
         while next_index < item_count:
-            next_item = self.tree.topLevelItem(next_index)
+            next_item = tree.topLevelItem(next_index)
             path = next_item.text(3)
             _, ext = os.path.splitext(path)
             ext = ext.lower()
             
             if ext in self.video_extensions or ext in self.audio_extensions:
                 # Select the item in the tree
-                self.tree.setCurrentItem(next_item)
-                self.tree.scrollToItem(next_item)
+                tree.setCurrentItem(next_item)
+                tree.scrollToItem(next_item)
                 
                 # Try to play the media
                 try:
@@ -2226,7 +2666,11 @@ class MdfindApp(QMainWindow):
             self.standalone_player.raise_()
             return
             
-        selected_items = self.tree.selectedItems()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+            
+        selected_items = tree.selectedItems()
         if not selected_items or len(selected_items) != 1:
             return
             
@@ -2279,9 +2723,11 @@ class MdfindApp(QMainWindow):
         self.standalone_player_active = False
         
         # If there's a selected item, show it in the embedded player
-        selected_items = self.tree.selectedItems()
-        if selected_items and len(selected_items) == 1:
-            path = selected_items[0].text(3)
+        tree = self.get_current_tree()
+        if tree:
+            selected_items = tree.selectedItems()
+            if selected_items and len(selected_items) == 1:
+                path = selected_items[0].text(3)
             if os.path.isfile(path):
                 # Re-trigger selection change to reload the preview
                 self.on_tree_selection_changed()
@@ -2292,32 +2738,36 @@ class MdfindApp(QMainWindow):
             return
             
         # Find the next media file just like in play_next_media
-        item_count = self.tree.topLevelItemCount()
+        tree = self.get_current_tree()
+        if not tree:
+            return
+            
+        item_count = tree.topLevelItemCount()
         if item_count == 0:
             return
 
         # Find the currently selected item
         current_index = -1
-        selected_items = self.tree.selectedItems()
+        selected_items = tree.selectedItems()
         if selected_items:
             current_item = selected_items[0]
             for i in range(item_count):
-                if self.tree.topLevelItem(i) == current_item:
+                if tree.topLevelItem(i) == current_item:
                     current_index = i
                     break
 
         # Find the next media file
         next_index = current_index + 1
         while next_index < item_count:
-            next_item = self.tree.topLevelItem(next_index)
+            next_item = tree.topLevelItem(next_index)
             path = next_item.text(3)
             _, ext = os.path.splitext(path)
             ext = ext.lower()
             
             if ext in self.video_extensions or ext in self.audio_extensions:
                 # Select the item in the tree
-                self.tree.setCurrentItem(next_item)
-                self.tree.scrollToItem(next_item)
+                tree.setCurrentItem(next_item)
+                tree.scrollToItem(next_item)
                 
                 # Play in standalone player
                 is_video = ext in self.video_extensions
