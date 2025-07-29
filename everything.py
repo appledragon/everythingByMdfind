@@ -766,10 +766,17 @@ class MdfindApp(QMainWindow):
         lbl_query = QLabel("Search Query:")
         self.edit_query = QLineEdit()
         self.lbl_items_found = QLabel("0 items found")
+        
+        # Add refresh button
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setToolTip("Refresh current search")
+        self.btn_refresh.setMaximumWidth(80)
+        self.btn_refresh.clicked.connect(self.refresh_current_search)
 
         form_layout.addWidget(lbl_query)
         form_layout.addWidget(self.edit_query, 4)
         form_layout.addWidget(self.lbl_items_found, 1)
+        form_layout.addWidget(self.btn_refresh)
         left_layout.addLayout(form_layout)
 
         # Second row: Directory selection (optional)
@@ -1614,6 +1621,38 @@ class MdfindApp(QMainWindow):
             write_config(cfg)
             self.query_completer.model().setStringList(self.query_history)
 
+    def refresh_current_search(self):
+        """Refresh the current search in the active tab"""
+        current_tab = self.get_current_tab()
+        if not current_tab:
+            return
+            
+        # Get current search parameters from the tab
+        query = current_tab.query
+        directory = current_tab.directory
+        file_name_search = current_tab.file_name_search
+        match_case = current_tab.match_case
+        full_match = current_tab.full_match
+        
+        # Stop any existing search in this tab
+        if current_tab.search_worker is not None and current_tab.search_worker.isRunning():
+            current_tab.search_worker.stop()
+            current_tab.search_worker.wait()
+
+        # Create new search worker with the same parameters
+        current_tab.search_worker = SearchWorker(
+            query, directory,
+            file_name_search,
+            match_case,
+            full_match,
+            None,  # No extra clause for refresh
+            False  # Not a bookmark search
+        )
+        current_tab.search_worker.progress_signal.connect(self.update_progress)
+        current_tab.search_worker.result_signal.connect(lambda results: self.update_tree(results, current_tab))
+        current_tab.search_worker.error_signal.connect(self.show_error)
+        current_tab.search_worker.start()
+
     def update_progress(self, value):
         self.progress.setValue(value)
 
@@ -2095,41 +2134,55 @@ class MdfindApp(QMainWindow):
             if not self.dark_mode:
                 close_button.setStyleSheet("""
                     QPushButton {
-                        background: transparent;
-                        border: none;
-                        padding: 0px;
+                        background: rgba(0, 0, 0, 0.05);
+                        border: 1px solid #cccccc;
+                        padding: 2px;
                         margin: 0px;
                         font-family: Arial;
-                        font-size: 16px;
+                        font-size: 14px;
                         font-weight: bold;
                         color: #666666;
+                        border-radius: 4px;
+                        min-width: 16px;
+                        min-height: 16px;
                     }
                     QPushButton:hover {
-                        background: rgba(0, 0, 0, 0.1);
-                        border-radius: 8px;
-                        color: #333333;
+                        background: rgba(220, 53, 69, 0.2);
+                        color: #dc3545;
+                        border: 1px solid #dc3545;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(220, 53, 69, 0.3);
+                        color: #dc3545;
                     }
                 """)
-                close_button.setText("×")
+                close_button.setText("X")
             else:
                 close_button.setStyleSheet("""
                     QPushButton {
-                        background: transparent;
-                        border: none;
-                        padding: 0px;
+                        background: rgba(255, 255, 255, 0.1);
+                        border: 1px solid #555555;
+                        padding: 2px;
                         margin: 0px;
                         font-family: Arial;
-                        font-size: 16px;
+                        font-size: 14px;
                         font-weight: bold;
-                        color: #aaaaaa;
+                        color: #cccccc;
+                        border-radius: 4px;
+                        min-width: 16px;
+                        min-height: 16px;
                     }
                     QPushButton:hover {
-                        background: rgba(255, 255, 255, 0.1);
-                        border-radius: 8px;
-                        color: #ffffff;
+                        background: rgba(220, 53, 69, 0.2);
+                        color: #ff6b6b;
+                        border: 1px solid #ff6b6b;
+                    }
+                    QPushButton:pressed {
+                        background: rgba(220, 53, 69, 0.3);
+                        color: #ff6b6b;
                     }
                 """)
-                close_button.setText("×")
+                close_button.setText("X")
     
     def calculate_tab_width(self):
         """Calculate optimal tab width based on number of tabs"""
@@ -2199,10 +2252,18 @@ class MdfindApp(QMainWindow):
                     subcontrol-origin: padding;
                     padding: 4px;
                     margin-right: 4px;
+                    background: rgba(255, 255, 255, 0.1);
+                    border: 1px solid #555555;
+                    width: 16px;
+                    height: 16px;
+                    color: #cccccc;
+                    border-radius: 4px;
                 }}
                 QTabBar::close-button:hover {{
-                    background: #5a5a5a;
-                    border-radius: 2px;
+                    background: rgba(220, 53, 69, 0.2);
+                    border-radius: 4px;
+                    color: #ff6b6b;
+                    border: 1px solid #ff6b6b;
                 }}
             """)
         else:
@@ -2237,14 +2298,18 @@ class MdfindApp(QMainWindow):
                     subcontrol-origin: padding;
                     padding: 4px;
                     margin-right: 4px;
-                    background: transparent;
-                    border: none;
+                    background: rgba(0, 0, 0, 0.05);
+                    border: 1px solid #cccccc;
                     width: 16px;
                     height: 16px;
+                    color: #666666;
+                    border-radius: 4px;
                 }}
                 QTabBar::close-button:hover {{
-                    background: rgba(0, 0, 0, 0.1);
+                    background: rgba(220, 53, 69, 0.2);
                     border-radius: 4px;
+                    color: #dc3545;
+                    border: 1px solid #dc3545;
                 }}
             """)
     
@@ -2479,7 +2544,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.3.1</p>
+<p><b>Version:</b> 1.3.2</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
