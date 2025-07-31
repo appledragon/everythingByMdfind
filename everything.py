@@ -5,6 +5,7 @@ import subprocess
 import time
 import csv
 import shutil
+import zipfile
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -1084,6 +1085,8 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addAction("Copy full path with file name", self.copy_full_path)
         self.single_context_menu.addAction("Copy path without file name", self.copy_path_only)
         self.single_context_menu.addAction("Copy file name only", self.copy_file_name_only)
+        self.single_context_menu.addSeparator()
+        self.single_context_menu.addAction("Compress to ZIP", self.compress_file)
         self.single_context_menu.addAction("Open in Finder", self.open_in_finder)
         self.single_context_menu.addAction("Export to CSV", self.export_to_csv)
 
@@ -1093,6 +1096,8 @@ class MdfindApp(QMainWindow):
         self.multi_context_menu.addAction("Copy to...", self.copy_multiple_files)
         self.multi_context_menu.addAction("Move to...", self.move_multiple_files)
         self.multi_context_menu.addAction("Batch Rename", self.batch_rename_files)
+        self.multi_context_menu.addSeparator()
+        self.multi_context_menu.addAction("Compress to ZIP", self.compress_multiple_files)
 
         self.batch_size = 100
 
@@ -2035,6 +2040,87 @@ class MdfindApp(QMainWindow):
             )
         else:
             self.show_info("Success", f"Successfully renamed {success_count} files.")
+
+    # ========== Compression functions ==========
+    def compress_file(self):
+        """Compress a single file to ZIP"""
+        path = self.get_selected_file()
+        if not path:
+            return
+        
+        # Get default ZIP file name
+        base_name = os.path.splitext(os.path.basename(path))[0]
+        default_zip_name = f"{base_name}.zip"
+        
+        # Ask user for ZIP file location and name
+        zip_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save ZIP file as...", 
+            default_zip_name,
+            "ZIP Files (*.zip);;All Files (*)"
+        )
+        
+        if not zip_path:
+            return
+        
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                if os.path.isfile(path):
+                    # Add single file
+                    zipf.write(path, os.path.basename(path))
+                elif os.path.isdir(path):
+                    # Add directory and all its contents
+                    for root, dirs, files in os.walk(path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, os.path.dirname(path))
+                            zipf.write(file_path, arcname)
+            
+            self.show_info("Success", f"File compressed to: {zip_path}")
+            
+        except Exception as e:
+            self.show_critical("Compression Error", f"Failed to compress file: {str(e)}")
+
+    def compress_multiple_files(self):
+        """Compress multiple files to ZIP"""
+        files = self.get_selected_files()
+        if not files:
+            return
+        
+        # Get default ZIP file name
+        default_zip_name = f"compressed_files_{len(files)}_items.zip"
+        
+        # Ask user for ZIP file location and name
+        zip_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            "Save ZIP file as...", 
+            default_zip_name,
+            "ZIP Files (*.zip);;All Files (*)"
+        )
+        
+        if not zip_path:
+            return
+        
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for path in files:
+                    if os.path.isfile(path):
+                        # Add file with just its name (no full path structure)
+                        zipf.write(path, os.path.basename(path))
+                    elif os.path.isdir(path):
+                        # Add directory and all its contents
+                        dir_name = os.path.basename(path)
+                        for root, dirs, files_in_dir in os.walk(path):
+                            for file in files_in_dir:
+                                file_path = os.path.join(root, file)
+                                # Create archive path that preserves directory structure
+                                arcname = os.path.join(dir_name, os.path.relpath(file_path, path))
+                                zipf.write(file_path, arcname)
+            
+            self.show_info("Success", f"{len(files)} items compressed to: {zip_path}")
+            
+        except Exception as e:
+            self.show_critical("Compression Error", f"Failed to compress files: {str(e)}")
 
     # ========== Copy path to clipboard ==========
     def show_tooltip(self, message):
