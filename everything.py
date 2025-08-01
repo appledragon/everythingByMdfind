@@ -2076,7 +2076,16 @@ class MdfindApp(QMainWindow):
                             arcname = os.path.relpath(file_path, os.path.dirname(path))
                             zipf.write(file_path, arcname)
             
-            self.show_info("Success", f"File compressed to: {zip_path}")
+            # Create callback function for opening in Finder
+            def open_zip_in_finder():
+                subprocess.run(["open", "-R", zip_path], check=True)
+            
+            self.show_info_dialog_with_action(
+                "Single File Compression", 
+                f"File compressed to: {zip_path}", 
+                "Open in Finder", 
+                open_zip_in_finder
+            )
             
         except Exception as e:
             self.show_critical("Compression Error", f"Failed to compress file: {str(e)}")
@@ -2117,7 +2126,16 @@ class MdfindApp(QMainWindow):
                                 arcname = os.path.join(dir_name, os.path.relpath(file_path, path))
                                 zipf.write(file_path, arcname)
             
-            self.show_info("Success", f"{len(files)} items compressed to: {zip_path}")
+            # Create callback function for opening in Finder
+            def open_zip_in_finder():
+                subprocess.run(["open", "-R", zip_path], check=True)
+            
+            self.show_info_dialog_with_action(
+                "Multiple Files Compression", 
+                f"{len(files)} items compressed to: {zip_path}", 
+                "Open in Finder", 
+                open_zip_in_finder
+            )
             
         except Exception as e:
             self.show_critical("Compression Error", f"Failed to compress files: {str(e)}")
@@ -2671,6 +2689,33 @@ class MdfindApp(QMainWindow):
                     background-color: #707070;
                 }
             """)
+
+    def show_info_dialog_with_action(self, title, message, action_button_text="Action", action_callback=None):
+        """Show a custom dialog with OK and an optional action button"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(message)
+        
+        # Add custom buttons
+        ok_button = msg.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        action_button = None
+        
+        if action_callback is not None:
+            action_button = msg.addButton(action_button_text, QMessageBox.ButtonRole.ActionRole)
+        
+        # Apply dark mode styling
+        self.apply_dialog_dark_mode(msg)
+        
+        # Execute dialog and handle response
+        msg.exec()
+        
+        # Check which button was clicked and execute callback if provided
+        if action_button and msg.clickedButton() == action_button and action_callback:
+            try:
+                action_callback()
+            except Exception as e:
+                self.show_critical("Error", f"Action failed: {str(e)}")
 
     def show_info(self, title, message):
         msg = QMessageBox(self)
