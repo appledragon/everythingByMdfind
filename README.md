@@ -35,7 +35,8 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
 *   **Sortable Results:** Organize search results by name, size, date modified, or path.
 *   **Multi-File Operations:** Perform actions on multiple files simultaneously:
     *   Multi-select files using Shift or Command (⌘) keys
-    *   Batch operations: Open, Delete, Copy, Move, Rename
+    *   Batch operations: Open, Delete, Copy, Move, Rename, Compress
+    *   ZIP compression with option to open in Finder after completion
     *   Context menu for additional operations
 *   **Multi-Tab Search Interface:** Work with multiple search sessions simultaneously:
     *   Create new tabs for different search queries
@@ -121,7 +122,7 @@ Apple Dragon
 
 ## Version
 
-1.3.2
+1.3.3
 
 ## Acknowledgements
 

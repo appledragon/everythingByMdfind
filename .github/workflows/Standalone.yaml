@@ -1,10 +1,10 @@
 name: Build Standalone Application
 
 on:
-  # 手动触发
+  # Manual trigger
   workflow_dispatch:
 
-# 关键：给 GITHUB_TOKEN 写入（contents: write）权限，否则无法创建发布
+# Key: Give GITHUB_TOKEN write permissions (contents: write), otherwise cannot create releases
 permissions:
   contents: write
 
@@ -12,71 +12,199 @@ jobs:
   build_and_release:
     runs-on: macos-latest
     steps:
-      # 1. 检出仓库代码
+      # 1. Check out repository code
       - name: Check out repository
         uses: actions/checkout@v2
 
-      # 2. 设置 Python 3.9
+      # 2. Set up Python 3.9
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.9'
 
-      # 3. 安装依赖
+      # 3. Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # 4. 使用 PyInstaller 打包两个架构
+      # 4. Build standalone applications for both architectures
       - name: Build standalone application
         run: |
-          # 创建x86_64版本
+          # Create x86_64 version
           pyinstaller --target-architecture x86_64 --onefile --windowed --noconsole everything.py
           mkdir -p dist_x86_64
           mv dist/everything dist_x86_64/
-          zip -r everything-x86_64.zip dist_x86_64
-
-          # 清理构建文件
+          
+          # Clean build files
           rm -rf build dist
 
-          # 创建arm64版本
+          # Create arm64 version
           pyinstaller --target-architecture arm64 --onefile --windowed --noconsole everything.py
           mkdir -p dist_arm64
           mv dist/everything dist_arm64/
-          zip -r everything-arm64.zip dist_arm64
 
-      # 5. 创建 GitHub Release
+      # 5. Create macOS app bundles and installers
+      - name: Create macOS app bundles and installers
+        run: |
+          # Create app bundle structure for x86_64
+          mkdir -p "Everything by mdfind x86_64.app/Contents/MacOS"
+          mkdir -p "Everything by mdfind x86_64.app/Contents/Resources"
+          
+          # Copy executable
+          cp dist_x86_64/everything "Everything by mdfind x86_64.app/Contents/MacOS/"
+          
+          # Create Info.plist for x86_64
+          cat > "Everything by mdfind x86_64.app/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>everything</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.appledragon.everythingbymdfind</string>
+              <key>CFBundleName</key>
+              <string>Everything by mdfind</string>
+              <key>CFBundleVersion</key>
+              <string>1.3.3</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.3.3</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Create app bundle structure for arm64
+          mkdir -p "Everything by mdfind arm64.app/Contents/MacOS"
+          mkdir -p "Everything by mdfind arm64.app/Contents/Resources"
+          
+          # Copy executable
+          cp dist_arm64/everything "Everything by mdfind arm64.app/Contents/MacOS/"
+          
+          # Create Info.plist for arm64
+          cat > "Everything by mdfind arm64.app/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>everything</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.appledragon.everythingbymdfind</string>
+              <key>CFBundleName</key>
+              <string>Everything by mdfind</string>
+              <key>CFBundleVersion</key>
+              <string>1.3.3</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.3.3</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Create installer packages
+          pkgbuild --root "Everything by mdfind x86_64.app" \
+                   --identifier "com.appledragon.everythingbymdfind.x86_64" \
+                   --version "1.3.3" \
+                   --install-location "/Applications/Everything by mdfind x86_64.app" \
+                   "everything-x86_64.pkg"
+          
+          pkgbuild --root "Everything by mdfind arm64.app" \
+                   --identifier "com.appledragon.everythingbymdfind.arm64" \
+                   --version "1.3.3" \
+                   --install-location "/Applications/Everything by mdfind arm64.app" \
+                   "everything-arm64.pkg"
+          
+          # Also create zip files for direct download
+          zip -r "everything-x86_64-app.zip" "Everything by mdfind x86_64.app"
+          zip -r "everything-arm64-app.zip" "Everything by mdfind arm64.app"
+
+      # 6. Create GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 'v1.3.2'
-          release_name: 'v1.3.2'
+          tag_name: 'v1.3.3'
+          release_name: 'Everything by mdfind v1.3.3'
+          body: |
+            ## Everything by mdfind v1.3.3
+            
+            ### New Features
+            - Added file compression functionality with ZIP support
+            - Enhanced dialog with "Open in Finder" option after compression
+            
+            ### Installation Options
+            
+            **Option 1: macOS Installer Package (.pkg)**
+            - Download the .pkg file for your architecture
+            - Double-click to install like any standard Mac application
+            - The app will be installed to /Applications folder
+            
+            **Option 2: App Bundle (.zip)**  
+            - Download the .zip file for your architecture
+            - Extract and drag to Applications folder manually
+            
+            ### Architecture Support
+            - **Intel Macs (x86_64)**: Download files with "x86_64" in the name
+            - **Apple Silicon Macs (arm64)**: Download files with "arm64" in the name
+            
+            ### System Requirements
+            - macOS 10.15 (Catalina) or later
+            - Python runtime is included (no separate installation needed)
           draft: false
           prerelease: false
 
-      # 6. 上传 x86_64 版本
-      - name: Upload x86_64 release asset
+      # 7. Upload release assets
+      - name: Upload x86_64 installer package
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-x86_64.zip
-          asset_name: everything-x86_64.zip
+          asset_path: everything-x86_64.pkg
+          asset_name: everything-x86_64.pkg
+          asset_content_type: application/octet-stream
+          
+      - name: Upload arm64 installer package
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-arm64.pkg
+          asset_name: everything-arm64.pkg
+          asset_content_type: application/octet-stream
+          
+      - name: Upload x86_64 app bundle
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-x86_64-app.zip
+          asset_name: everything-x86_64-app.zip
           asset_content_type: application/zip
           
-      # 7. 上传 arm64 版本
-      - name: Upload arm64 release asset
+      - name: Upload arm64 app bundle
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-arm64.zip
-          asset_name: everything-arm64.zip
+          asset_path: everything-arm64-app.zip
+          asset_name: everything-arm64-app.zip
           asset_content_type: application/zip
