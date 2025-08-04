@@ -1627,9 +1627,20 @@ class MdfindApp(QMainWindow):
             self.query_completer.model().setStringList(self.query_history)
 
     def refresh_current_search(self):
-        """Refresh the current search in the active tab"""
+        """Refresh the current search in the active tab, or create a new tab if none exists"""
         current_tab = self.get_current_tab()
+        
+        # If no current tab exists, create a new search with current form parameters
         if not current_tab:
+            # Use current form values to start a new search
+            query = self.edit_query.text().strip()
+            
+            # If there's no query, don't start a search
+            if not query:
+                return
+                
+            # Start a new search which will create a new tab
+            self.start_search()
             return
             
         # Get current search parameters from the tab
