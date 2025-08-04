@@ -2228,11 +2228,14 @@ class MdfindApp(QMainWindow):
         # Get the tab bar
         tab_bar = self.tab_widget.tabBar()
         
-        # Create a close button with better visibility
+        # Get the close button for this tab
         close_button = tab_bar.tabButton(index, tab_bar.ButtonPosition.RightSide)
         if close_button:
             # Set a tooltip
             close_button.setToolTip("Close tab")
+            
+            # Force the button to show "×" (multiplication sign) for better visibility
+            close_button.setText("×")
             
             # Add a style specifically for this button
             if not self.dark_mode:
@@ -2242,13 +2245,15 @@ class MdfindApp(QMainWindow):
                         border: 1px solid #cccccc;
                         padding: 2px;
                         margin: 0px;
-                        font-family: Arial;
-                        font-size: 14px;
+                        font-family: Arial, sans-serif;
+                        font-size: 16px;
                         font-weight: bold;
                         color: #666666;
                         border-radius: 4px;
-                        min-width: 16px;
-                        min-height: 16px;
+                        min-width: 18px;
+                        min-height: 18px;
+                        max-width: 18px;
+                        max-height: 18px;
                     }
                     QPushButton:hover {
                         background: rgba(220, 53, 69, 0.2);
@@ -2260,7 +2265,6 @@ class MdfindApp(QMainWindow):
                         color: #dc3545;
                     }
                 """)
-                close_button.setText("X")
             else:
                 close_button.setStyleSheet("""
                     QPushButton {
@@ -2268,13 +2272,15 @@ class MdfindApp(QMainWindow):
                         border: 1px solid #555555;
                         padding: 2px;
                         margin: 0px;
-                        font-family: Arial;
-                        font-size: 14px;
+                        font-family: Arial, sans-serif;
+                        font-size: 16px;
                         font-weight: bold;
                         color: #cccccc;
                         border-radius: 4px;
-                        min-width: 16px;
-                        min-height: 16px;
+                        min-width: 18px;
+                        min-height: 18px;
+                        max-width: 18px;
+                        max-height: 18px;
                     }
                     QPushButton:hover {
                         background: rgba(220, 53, 69, 0.2);
@@ -2286,7 +2292,11 @@ class MdfindApp(QMainWindow):
                         color: #ff6b6b;
                     }
                 """)
-                close_button.setText("X")
+    
+    def update_all_tab_close_buttons(self):
+        """Update all tab close buttons to show clear X"""
+        for i in range(self.tab_widget.count()):
+            self.update_tab_close_button(i)
     
     def calculate_tab_width(self):
         """Calculate optimal tab width based on number of tabs"""
@@ -2351,24 +2361,6 @@ class MdfindApp(QMainWindow):
                 QTabBar::tab:hover {{
                     background: #4a4a4a;
                 }}
-                QTabBar::close-button {{
-                    subcontrol-position: right;
-                    subcontrol-origin: padding;
-                    padding: 4px;
-                    margin-right: 4px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 1px solid #555555;
-                    width: 16px;
-                    height: 16px;
-                    color: #cccccc;
-                    border-radius: 4px;
-                }}
-                QTabBar::close-button:hover {{
-                    background: rgba(220, 53, 69, 0.2);
-                    border-radius: 4px;
-                    color: #ff6b6b;
-                    border: 1px solid #ff6b6b;
-                }}
             """)
         else:
             # Light mode style
@@ -2397,25 +2389,10 @@ class MdfindApp(QMainWindow):
                 QTabBar::tab:hover {{
                     background: #e0e0e0;
                 }}
-                QTabBar::close-button {{
-                    subcontrol-position: right;
-                    subcontrol-origin: padding;
-                    padding: 4px;
-                    margin-right: 4px;
-                    background: rgba(0, 0, 0, 0.05);
-                    border: 1px solid #cccccc;
-                    width: 16px;
-                    height: 16px;
-                    color: #666666;
-                    border-radius: 4px;
-                }}
-                QTabBar::close-button:hover {{
-                    background: rgba(220, 53, 69, 0.2);
-                    border-radius: 4px;
-                    color: #dc3545;
-                    border: 1px solid #dc3545;
-                }}
             """)
+        
+        # Update all existing tab close buttons to show clear "X"
+        self.update_all_tab_close_buttons()
     
     def set_non_dark_mode(self):
         self.setStyleSheet("""
@@ -2511,6 +2488,10 @@ class MdfindApp(QMainWindow):
                         color: white;
                     }
                 """)
+        
+        # Update tab widget style and close buttons if tab_widget exists
+        if hasattr(self, 'tab_widget'):
+            self.update_tab_style()
     
     def set_dark_mode(self):
         self.setStyleSheet("""
@@ -2606,6 +2587,10 @@ class MdfindApp(QMainWindow):
                         color: white;
                     }
                 """)
+        
+        # Update tab widget style and close buttons if tab_widget exists
+        if hasattr(self, 'tab_widget'):
+            self.update_tab_style()
 
     def toggle_dark_mode(self, checked):
         self.dark_mode = checked
