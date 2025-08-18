@@ -27,27 +27,86 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
+          pip install py2app
+          # 安装 librsvg 用于 SVG 转换
+          brew install librsvg
 
-      # 4. 使用 PyInstaller 打包两个架构
-      - name: Build standalone application
+      # 4. 创建应用图标
+      - name: Create app icon from SVG
         run: |
-          # 创建x86_64版本
-          pyinstaller --target-architecture x86_64 --onefile --windowed --noconsole everything.py
-          mkdir -p dist_x86_64
-          mv dist/everything dist_x86_64/
-          zip -r everything-x86_64.zip dist_x86_64
+          # 创建不同尺寸的 PNG
+          rsvg-convert -w 16 -h 16 icon.svg -o icon_16x16.png
+          rsvg-convert -w 32 -h 32 icon.svg -o icon_32x32.png
+          rsvg-convert -w 64 -h 64 icon.svg -o icon_64x64.png
+          rsvg-convert -w 128 -h 128 icon.svg -o icon_128x128.png
+          rsvg-convert -w 256 -h 256 icon.svg -o icon_256x256.png
+          rsvg-convert -w 512 -h 512 icon.svg -o icon_512x512.png
+          rsvg-convert -w 1024 -h 1024 icon.svg -o icon_1024x1024.png
+          
+          # 创建 iconset 目录结构
+          mkdir icon.iconset
+          cp icon_16x16.png icon.iconset/icon_16x16.png
+          cp icon_32x32.png icon.iconset/icon_16x16@2x.png
+          cp icon_32x32.png icon.iconset/icon_32x32.png
+          cp icon_64x64.png icon.iconset/icon_32x32@2x.png
+          cp icon_128x128.png icon.iconset/icon_128x128.png
+          cp icon_256x256.png icon.iconset/icon_128x128@2x.png
+          cp icon_256x256.png icon.iconset/icon_256x256.png
+          cp icon_512x512.png icon.iconset/icon_256x256@2x.png
+          cp icon_512x512.png icon.iconset/icon_512x512.png
+          cp icon_1024x1024.png icon.iconset/icon_512x512@2x.png
+          
+          # 使用 iconutil 创建 .icns 文件
+          iconutil -c icns icon.iconset
+          
+          # 验证图标文件是否创建成功
+          ls -la icon.icns
 
-          # 清理构建文件
-          rm -rf build dist
+      # 5. 创建 setup.py 配置文件
+      - name: Create setup.py for py2app
+        run: |
+          cat > setup.py << 'EOF'
+          from setuptools import setup
+          
+          APP = ['everything.py']
+          DATA_FILES = [
+              ('', ['LICENSE.md', 'README.md']),
+          ]
+          OPTIONS = {
+              'argv_emulation': False,
+              'packages': ['PyQt6'],
+              'excludes': [],
+              'iconfile': 'icon.icns',
+              'plist': {
+                  'CFBundleName': 'Everything',
+                  'CFBundleDisplayName': 'Everything',
+                  'CFBundleVersion': '1.3.2',
+                  'CFBundleShortVersionString': '1.3.2',
+                  'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
+                  'LSMinimumSystemVersion': '10.14',
+                  'NSHighResolutionCapable': True,
+              }
+          }
+          
+          setup(
+              app=APP,
+              data_files=DATA_FILES,
+              options={'py2app': OPTIONS},
+              setup_requires=['py2app'],
+          )
+          EOF
 
-          # 创建arm64版本
-          pyinstaller --target-architecture arm64 --onefile --windowed --noconsole everything.py
-          mkdir -p dist_arm64
-          mv dist/everything dist_arm64/
-          zip -r everything-arm64.zip dist_arm64
+      # 6. 使用 py2app 打包 Universal Binary
+      - name: Build standalone application with py2app
+        run: |
+          # 构建 Universal Binary (同时支持 x86_64 和 arm64)
+          python setup.py py2app --arch universal2
+          
+          # 创建压缩包
+          cd dist
+          zip -r ../everything-py2app.zip "Everything.app"
 
-      # 5. 创建 GitHub Release
+      # 7. 创建 GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
@@ -59,24 +118,13 @@ jobs:
           draft: false
           prerelease: false
 
-      # 6. 上传 x86_64 版本
-      - name: Upload x86_64 release asset
+      # 8. 上传 py2app Universal Binary 版本
+      - name: Upload py2app release asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-x86_64.zip
-          asset_name: everything-x86_64.zip
-          asset_content_type: application/zip
-          
-      # 7. 上传 arm64 版本
-      - name: Upload arm64 release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-arm64.zip
-          asset_name: everything-arm64.zip
+          asset_path: everything-py2app.zip
+          asset_name: everything-py2app.zip
           asset_content_type: application/zip
