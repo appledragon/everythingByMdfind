@@ -1,10 +1,10 @@
 name: Build Standalone Application
 
 on:
-  # 手动触发
+  # Manual trigger
   workflow_dispatch:
 
-# 关键：给 GITHUB_TOKEN 写入（contents: write）权限，否则无法创建发布
+# Key: Give GITHUB_TOKEN write permissions (contents: write), otherwise unable to create releases
 permissions:
   contents: write
 
@@ -12,29 +12,29 @@ jobs:
   build_and_release:
     runs-on: macos-latest
     steps:
-      # 1. 检出仓库代码
+      # 1. Check out repository code
       - name: Check out repository
         uses: actions/checkout@v2
 
-      # 2. 设置 Python 3.9
+      # 2. Set up Python 3.9
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.9'
 
-      # 3. 安装依赖
+      # 3. Install dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install py2app
-          # 安装 librsvg 用于 SVG 转换
+          # Install librsvg for SVG conversion
           brew install librsvg
 
-      # 4. 创建应用图标
+      # 4. Create app icon from SVG
       - name: Create app icon from SVG
         run: |
-          # 创建不同尺寸的 PNG
+          # Create different sizes of PNG
           rsvg-convert -w 16 -h 16 icon.svg -o icon_16x16.png
           rsvg-convert -w 32 -h 32 icon.svg -o icon_32x32.png
           rsvg-convert -w 64 -h 64 icon.svg -o icon_64x64.png
@@ -43,7 +43,7 @@ jobs:
           rsvg-convert -w 512 -h 512 icon.svg -o icon_512x512.png
           rsvg-convert -w 1024 -h 1024 icon.svg -o icon_1024x1024.png
           
-          # 创建 iconset 目录结构
+          # Create iconset directory structure
           mkdir icon.iconset
           cp icon_16x16.png icon.iconset/icon_16x16.png
           cp icon_32x32.png icon.iconset/icon_16x16@2x.png
@@ -56,13 +56,13 @@ jobs:
           cp icon_512x512.png icon.iconset/icon_512x512.png
           cp icon_1024x1024.png icon.iconset/icon_512x512@2x.png
           
-          # 使用 iconutil 创建 .icns 文件
+          # Use iconutil to create .icns file
           iconutil -c icns icon.iconset
           
-          # 验证图标文件是否创建成功
+          # Verify icon file creation success
           ls -la icon.icns
 
-      # 5. 创建 setup.py 配置文件
+      # 5. Create setup.py configuration file
       - name: Create setup.py for py2app
         run: |
           cat > setup.py << 'EOF'
@@ -96,17 +96,17 @@ jobs:
           )
           EOF
 
-      # 6. 使用 py2app 打包 Universal Binary
+      # 6. Build Universal Binary with py2app
       - name: Build standalone application with py2app
         run: |
-          # 构建 Universal Binary (同时支持 x86_64 和 arm64)
+          # Build Universal Binary (supports both x86_64 and arm64)
           python setup.py py2app --arch universal2
           
-          # 创建压缩包
+          # Create archive
           cd dist
           zip -r ../everything-py2app.zip "Everything.app"
 
-      # 7. 创建 GitHub Release
+      # 7. Create GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
@@ -118,7 +118,7 @@ jobs:
           draft: false
           prerelease: false
 
-      # 8. 上传 py2app Universal Binary 版本
+      # 8. Upload py2app Universal Binary version
       - name: Upload py2app release asset
         uses: actions/upload-release-asset@v1
         env:
