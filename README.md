@@ -101,8 +101,18 @@ You can use PyInstaller to create a standalone application:
 
 2.  **Create the standalone application:**
 
+    For a universal build (works on both Intel and Apple Silicon):
     ```bash
     pyinstaller --onefile --windowed --noconsole everything.py
+    ```
+
+    For architecture-specific builds:
+    ```bash
+    # For Apple Silicon Macs (M1, M2, M3)
+    pyinstaller --onefile --windowed --noconsole --target-arch=arm64 everything.py
+    
+    # For Intel-based Macs
+    pyinstaller --onefile --windowed --noconsole --target-arch=x86_64 everything.py
     ```
 
     The executable will be located in the `dist` directory.

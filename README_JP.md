@@ -107,8 +107,19 @@ PyInstallerで実行ファイル生成:
     ```
 
 2. **ビルド:**
+
+    ユニバーサル版（Intel と Apple Silicon 両対応）：
     ```bash
     pyinstaller --onefile --windowed --noconsole everything.py
+    ```
+
+    アーキテクチャ特化版：
+    ```bash
+    # Apple Silicon Mac用（M1、M2、M3）
+    pyinstaller --onefile --windowed --noconsole --target-arch=arm64 everything.py
+    
+    # Intel Mac用
+    pyinstaller --onefile --windowed --noconsole --target-arch=x86_64 everything.py
     ```
     `dist`フォルダに生成されます
 

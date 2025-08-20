@@ -107,8 +107,19 @@
     ```
 
 2. **生成应用：**
+
+    通用版本（同时支持 Intel 和 Apple Silicon）：
     ```bash
     pyinstaller --onefile --windowed --noconsole everything.py
+    ```
+
+    针对特定架构的版本：
+    ```bash
+    # 针对 Apple Silicon Mac（M1、M2、M3）
+    pyinstaller --onefile --windowed --noconsole --target-arch=arm64 everything.py
+    
+    # 针对 Intel Mac
+    pyinstaller --onefile --windowed --noconsole --target-arch=x86_64 everything.py
     ```
     生成的可执行文件位于 `dist` 目录
 

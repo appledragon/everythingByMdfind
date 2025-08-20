@@ -107,8 +107,19 @@ PyInstaller로 배포용 앱 생성:
     ```
 
 2. **애플리케이션 빌드:**
+
+    유니버설 버전 (Intel과 Apple Silicon 모두 지원):
     ```bash
     pyinstaller --onefile --windowed --noconsole everything.py
+    ```
+
+    아키텍처별 특화 버전:
+    ```bash
+    # Apple Silicon Mac용 (M1, M2, M3)
+    pyinstaller --onefile --windowed --noconsole --target-arch=arm64 everything.py
+    
+    # Intel Mac용
+    pyinstaller --onefile --windowed --noconsole --target-arch=x86_64 everything.py
     ```
     `dist` 폴더에 실행 파일 생성
 

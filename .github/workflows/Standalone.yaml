@@ -11,6 +11,9 @@ permissions:
 jobs:
   build_and_release:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
     steps:
       # 1. Check out repository code
       - name: Check out repository
@@ -27,7 +30,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install py2app
+          pip install pyinstaller
           # Install librsvg for SVG conversion
           brew install librsvg
 
@@ -62,69 +65,96 @@ jobs:
           # Verify icon file creation success
           ls -la icon.icns
 
-      # 5. Create setup.py configuration file
-      - name: Create setup.py for py2app
+      # 5. Build architecture-specific standalone application with PyInstaller
+      - name: Build standalone application with PyInstaller (${{ matrix.arch }})
         run: |
-          cat > setup.py << 'EOF'
-          from setuptools import setup
+          # Set architecture-specific target
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            TARGET_ARCH="arm64"
+            ARCH_SUFFIX="arm64"
+          else
+            TARGET_ARCH="x86_64"
+            ARCH_SUFFIX="x86_64"
+          fi
           
-          APP = ['everything.py']
-          DATA_FILES = [
-              ('', ['LICENSE.md', 'README.md']),
-          ]
-          OPTIONS = {
-              'argv_emulation': False,
-              'packages': ['PyQt6'],
-              'excludes': [],
-              'iconfile': 'icon.icns',
-              'plist': {
-                  'CFBundleName': 'Everything',
-                  'CFBundleDisplayName': 'Everything',
-                  'CFBundleVersion': '1.3.3',
-                  'CFBundleShortVersionString': '1.3.3',
-                  'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
-                  'LSMinimumSystemVersion': '10.14',
-                  'NSHighResolutionCapable': True,
-              }
-          }
+          # Build with PyInstaller for specific architecture
+          pyinstaller --onefile --windowed --noconsole \
+            --icon=icon.icns \
+            --name="Everything-${ARCH_SUFFIX}" \
+            --target-arch=$TARGET_ARCH \
+            --add-data="LICENSE.md:." \
+            --add-data="README.md:." \
+            everything.py
           
-          setup(
-              app=APP,
-              data_files=DATA_FILES,
-              options={'py2app': OPTIONS},
-              setup_requires=['py2app'],
-          )
-          EOF
-
-      # 6. Build Universal Binary with py2app
-      - name: Build standalone application with py2app
-        run: |
-          # Build Universal Binary (supports both x86_64 and arm64)
-          python setup.py py2app --arch universal2
-          
-          # Create archive
+          # Create archive with architecture-specific name
           cd dist
-          zip -r ../everything-py2app.zip "Everything.app"
+          zip -r "../everything-${ARCH_SUFFIX}.zip" "Everything-${ARCH_SUFFIX}"
 
-      # 7. Create GitHub Release
+      # 6. Upload architecture-specific build artifact
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: everything-${{ matrix.arch }}
+          path: everything-${{ matrix.arch }}.zip
+
+  create_release:
+    needs: build_and_release
+    runs-on: macos-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      # 1. Check out repository code
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      # 2. Create GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 'v1.3.3'
-          release_name: 'v1.3.3'
+          tag_name: 'v1.3.3-${{ github.run_number }}'
+          release_name: 'Everything by mdfind v1.3.3 - ARM64 & x86_64'
+          body: |
+            ## Everything by mdfind v1.3.3
+            
+            This release provides separate builds for different architectures:
+            - **everything-arm64.zip**: For Apple Silicon Macs (M1, M2, M3 chips)
+            - **everything-x86_64.zip**: For Intel-based Macs
+            
+            ### Features
+            - Lightning-fast file search using macOS Spotlight
+            - Support for both filename and content search
+            - Advanced filtering options
+            - Built-in file preview
+            - Multi-tab search interface
+            - Batch operations support
+            
+            Choose the appropriate version for your Mac's architecture.
           draft: false
           prerelease: false
 
-      # 8. Upload py2app Universal Binary version
-      - name: Upload py2app release asset
+  upload_releases:
+    needs: [build_and_release, create_release]
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    steps:
+      # 1. Download architecture-specific build artifact
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: everything-${{ matrix.arch }}
+
+      # 2. Upload architecture-specific release asset
+      - name: Upload release asset (${{ matrix.arch }})
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-py2app.zip
-          asset_name: everything-py2app.zip
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: everything-${{ matrix.arch }}.zip
+          asset_name: everything-${{ matrix.arch }}.zip
           asset_content_type: application/zip
