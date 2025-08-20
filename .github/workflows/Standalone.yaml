@@ -17,11 +17,11 @@ jobs:
     steps:
       # 1. Check out repository code
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # 2. Set up Python 3.9
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
@@ -92,30 +92,38 @@ jobs:
 
       # 6. Upload architecture-specific build artifact
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: everything-${{ matrix.arch }}
           path: everything-${{ matrix.arch }}.zip
 
-  create_release:
+  create_and_upload_release:
     needs: build_and_release
     runs-on: macos-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       # 1. Check out repository code
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      # 2. Create GitHub Release
-      - name: Create GitHub release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 2. Download all architecture-specific build artifacts
+      - name: Download ARM64 build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: everything-arm64
+          path: ./artifacts/
+
+      - name: Download x86_64 build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: everything-x86_64
+          path: ./artifacts/
+
+      # 3. Create GitHub Release with both architecture builds
+      - name: Create GitHub release and upload assets
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: 'v1.3.3-${{ github.run_number }}'
-          release_name: 'Everything by mdfind v1.3.3 - ARM64 & x86_64'
+          name: 'Everything by mdfind v1.3.3 - ARM64 & x86_64'
           body: |
             ## Everything by mdfind v1.3.3
             
@@ -132,29 +140,10 @@ jobs:
             - Batch operations support
             
             Choose the appropriate version for your Mac's architecture.
+          files: |
+            ./artifacts/everything-arm64.zip
+            ./artifacts/everything-x86_64.zip
           draft: false
           prerelease: false
-
-  upload_releases:
-    needs: [build_and_release, create_release]
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
-    steps:
-      # 1. Download architecture-specific build artifact
-      - name: Download build artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: everything-${{ matrix.arch }}
-
-      # 2. Upload architecture-specific release asset
-      - name: Upload release asset (${{ matrix.arch }})
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: everything-${{ matrix.arch }}.zip
-          asset_name: everything-${{ matrix.arch }}.zip
-          asset_content_type: application/zip

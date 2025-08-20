@@ -101,6 +101,18 @@ You can use PyInstaller to create a standalone application:
 
 2.  **Create the standalone application:**
 
+    **Option A: Quick build using the provided script**
+    ```bash
+    # Build for both architectures
+    ./build.sh
+    
+    # Build for specific architecture
+    ./build.sh arm64    # For Apple Silicon
+    ./build.sh x86_64   # For Intel
+    ```
+
+    **Option B: Manual build with PyInstaller**
+    
     For a universal build (works on both Intel and Apple Silicon):
     ```bash
     pyinstaller --onefile --windowed --noconsole everything.py
