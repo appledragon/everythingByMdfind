@@ -99,18 +99,51 @@
 
 ## 打包独立版（可选）
 
-使用 PyInstaller 生成独立应用：
+使用 py2app 生成 macOS 独立应用：
 
 1. **安装打包工具：**
     ```bash
-    pip install pyinstaller
+    pip install py2app
     ```
 
-2. **生成应用：**
+2. **创建配置文件：**
     ```bash
-    pyinstaller --onefile --windowed --noconsole everything.py
+    cat > setup.py << 'EOF'
+    from setuptools import setup
+
+    APP = ['everything.py']
+    DATA_FILES = [
+        ('', ['LICENSE.md', 'README.md']),
+    ]
+    OPTIONS = {
+        'argv_emulation': False,
+        'packages': ['PyQt6'],
+        'excludes': [],
+        'plist': {
+            'CFBundleName': 'Everything',
+            'CFBundleDisplayName': 'Everything',
+            'CFBundleVersion': '1.3.3',
+            'CFBundleShortVersionString': '1.3.3',
+            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
+            'LSMinimumSystemVersion': '10.14',
+            'NSHighResolutionCapable': True,
+        }
+    }
+
+    setup(
+        app=APP,
+        data_files=DATA_FILES,
+        options={'py2app': OPTIONS},
+        setup_requires=['py2app'],
+    )
+    EOF
     ```
-    生成的可执行文件位于 `dist` 目录
+
+3. **生成应用：**
+    ```bash
+    python setup.py py2app
+    ```
+    生成的 macOS 应用包位于 `dist` 目录
 
 ## 贡献代码
 

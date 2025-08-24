@@ -99,18 +99,51 @@ macOS 스포트라이트 엔진 기반의 초고속 파일 검색 도구
 
 ## 독립 실행 파일 제작 (선택)
 
-PyInstaller로 배포용 앱 생성:
+py2app으로 macOS용 배포 앱 생성:
 
 1. **패키징 도구 설치:**
     ```bash
-    pip install pyinstaller
+    pip install py2app
     ```
 
-2. **애플리케이션 빌드:**
+2. **설정 파일 생성:**
     ```bash
-    pyinstaller --onefile --windowed --noconsole everything.py
+    cat > setup.py << 'EOF'
+    from setuptools import setup
+
+    APP = ['everything.py']
+    DATA_FILES = [
+        ('', ['LICENSE.md', 'README.md']),
+    ]
+    OPTIONS = {
+        'argv_emulation': False,
+        'packages': ['PyQt6'],
+        'excludes': [],
+        'plist': {
+            'CFBundleName': 'Everything',
+            'CFBundleDisplayName': 'Everything',
+            'CFBundleVersion': '1.3.3',
+            'CFBundleShortVersionString': '1.3.3',
+            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
+            'LSMinimumSystemVersion': '10.14',
+            'NSHighResolutionCapable': True,
+        }
+    }
+
+    setup(
+        app=APP,
+        data_files=DATA_FILES,
+        options={'py2app': OPTIONS},
+        setup_requires=['py2app'],
+    )
+    EOF
     ```
-    `dist` 폴더에 실행 파일 생성
+
+3. **애플리케이션 빌드:**
+    ```bash
+    python setup.py py2app
+    ```
+    `dist` 폴더에 macOS 앱이 생성됩니다
 
 ## 기여 안내
 

@@ -99,18 +99,51 @@ macOSのSpotlight検索エンジンを活用した超高速ファイル検索ツ
 
 ## アプリ化（任意）
 
-PyInstallerで実行ファイル生成:
+py2appでmacOS用実行ファイル生成:
 
 1. **ツールインストール:**
     ```bash
-    pip install pyinstaller
+    pip install py2app
     ```
 
-2. **ビルド:**
+2. **設定ファイル作成:**
     ```bash
-    pyinstaller --onefile --windowed --noconsole everything.py
+    cat > setup.py << 'EOF'
+    from setuptools import setup
+
+    APP = ['everything.py']
+    DATA_FILES = [
+        ('', ['LICENSE.md', 'README.md']),
+    ]
+    OPTIONS = {
+        'argv_emulation': False,
+        'packages': ['PyQt6'],
+        'excludes': [],
+        'plist': {
+            'CFBundleName': 'Everything',
+            'CFBundleDisplayName': 'Everything',
+            'CFBundleVersion': '1.3.3',
+            'CFBundleShortVersionString': '1.3.3',
+            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
+            'LSMinimumSystemVersion': '10.14',
+            'NSHighResolutionCapable': True,
+        }
+    }
+
+    setup(
+        app=APP,
+        data_files=DATA_FILES,
+        options={'py2app': OPTIONS},
+        setup_requires=['py2app'],
+    )
+    EOF
     ```
-    `dist`フォルダに生成されます
+
+3. **ビルド:**
+    ```bash
+    python setup.py py2app
+    ```
+    `dist`フォルダにmacOSアプリが生成されます
 
 ## 開発参加
 
