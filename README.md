@@ -4,6 +4,12 @@
 
 A powerful and efficient file search tool for macOS, leveraging the native Spotlight engine for lightning-fast results.
 
+## Screenshots
+
+See the [screenshots directory](screenshots/) for visual demonstrations of all the main features including search functionality, filtering options, dark/light themes, and advanced search capabilities.
+
+📸 **[View Application Screenshots](screenshots/README.md)**
+
 ## Key Features
 
 *   **Blazing Fast Search:** Utilizes the macOS Spotlight index for near-instantaneous file searching.
