@@ -1,6 +1,6 @@
 [English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md)
 
-<img width="1920" height="1080" alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
+<img alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
 
 # Everything by mdfind
 
