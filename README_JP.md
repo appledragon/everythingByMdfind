@@ -1,4 +1,5 @@
 # Everything by mdfind
+<img alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
 
 macOSのSpotlight検索エンジンを活用した超高速ファイル検索ツール
 
@@ -166,4 +167,3 @@ Apple Dragon
 * PyQt6チームに感謝
 * オープンソースコミュニティへの敬意
 
-![スクリーンショット](https://github.com/user-attachments/assets/2b372510-ece7-44b6-ab4e-5a1898318517)
