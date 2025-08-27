@@ -1,5 +1,7 @@
 [English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md)
 
+<img width="1920" height="1080" alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
+
 # Everything by mdfind
 
 A powerful and efficient file search tool for macOS, leveraging the native Spotlight engine for lightning-fast results.
@@ -162,5 +164,4 @@ Apple Dragon
 *   Thanks to the PyQt6 team for providing a powerful and versatile GUI framework.
 *   Inspiration from other great file search tools.
 
-![image](https://github.com/user-attachments/assets/7164998f-2d7c-4d29-9af1-cfd4cf962d02)
 
