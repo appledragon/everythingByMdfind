@@ -1,4 +1,5 @@
 # Everything by mdfind
+<img alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
 
 macOS 스포트라이트 엔진 기반의 초고속 파일 검색 도구
 
@@ -166,4 +167,3 @@ Apple Dragon
 * PyQt6 개발팀에 감사
 * 오픈소스 커뮤니티에 존경을
 
-![스크린샷](https://github.com/user-attachments/assets/2b372510-ece7-44b6-ab4e-5a1898318517)
