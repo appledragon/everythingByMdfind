@@ -1,4 +1,5 @@
 # Everything by mdfind
+<img alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
 
 一款基于 macOS 原生 Spotlight 引擎的极速文件搜索工具，毫秒级响应速度
 
@@ -166,4 +167,3 @@ Apple Dragon
 * 感谢 PyQt6 团队提供的跨平台 GUI 框架
 * 致敬优秀开源项目带来的启发
 
-![软件界面](https://github.com/user-attachments/assets/2b372510-ece7-44b6-ab4e-5a1898318517)
