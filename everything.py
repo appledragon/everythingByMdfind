@@ -1,3 +1,17 @@
+# Copyright 2025 Apple Dragon
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import sys
 import os
 import json
@@ -856,6 +870,7 @@ class MdfindApp(QMainWindow):
         self.tab_context_menu.addAction("Close Others", self.close_other_tabs)
         self.tab_context_menu.addAction("Close to the Left", self.close_left_tabs)
         self.tab_context_menu.addAction("Close to the Right", self.close_right_tabs)
+        self.tab_context_menu.addAction("Close All", self.close_all_tabs)
         
         left_layout.addWidget(self.tab_widget, stretch=1)
         
@@ -1297,6 +1312,22 @@ class MdfindApp(QMainWindow):
             
             # Close tabs in reverse order from the last to the one after clicked tab
             for i in range(tab_count - 1, self.context_menu_tab_index, -1):
+                self.close_tab(i)
+    
+    def close_all_tabs(self):
+        """Close all search tabs"""
+        tab_count = self.tab_widget.count()
+        if tab_count == 0:
+            return
+        
+        reply = self.show_question(
+            "Close All Tabs",
+            f"Are you sure you want to close all {tab_count} tabs?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            # Close tabs in reverse order to maintain correct indices
+            for i in reversed(range(tab_count)):
                 self.close_tab(i)
 
     # ========== Preview logic ==========
@@ -2644,7 +2675,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.3.3</p>
+<p><b>Version:</b> 1.3.4</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -2934,7 +2965,7 @@ class MdfindApp(QMainWindow):
         """Show the given media path in the standalone player"""
         if not self.standalone_player_active:
             return
-            
+
         _, ext = os.path.splitext(path)
         ext = ext.lower()
         

@@ -58,13 +58,12 @@
 4. 点击表头切换排序方式（名称/大小/修改时间/路径）
 5. 通过"视图"菜单开关预览面板，实时查看文件内容
 6. 使用"书签"菜单快速定位特定文件类型（视频/音频/图片等）
-7. 使用"书签"菜单快速定位特定文件类型（视频/音频/图片等）
-8. 右键点击文件弹出操作菜单
-9. 直接拖拽搜索结果到其他应用
-10. 媒体文件支持内置播放器或独立窗口播放
-11. 每次搜索自动创建新标签页，支持多个搜索任务同时进行
-12. 右键标签页使用管理菜单：关闭标签、关闭其他标签、关闭左侧/右侧标签
-13. 通过视图菜单切换深色模式，夜间使用更舒适
+7. 右键点击文件弹出操作菜单
+8. 直接拖拽搜索结果到其他应用
+9.  媒体文件支持内置播放器或独立窗口播放
+10. 每次搜索自动创建新标签页，支持多个搜索任务同时进行
+11. 右键标签页使用管理菜单：关闭标签、关闭其他标签、关闭左侧/右侧标签
+12. 通过视图菜单切换深色模式，夜间使用更舒适
 
 ## 安装指南
 
@@ -123,8 +122,8 @@
         'plist': {
             'CFBundleName': 'Everything',
             'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.3',
-            'CFBundleShortVersionString': '1.3.3',
+            'CFBundleVersion': '1.3.4',
+            'CFBundleShortVersionString': '1.3.4',
             'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
             'LSMinimumSystemVersion': '10.14',
             'NSHighResolutionCapable': True,
@@ -160,7 +159,7 @@ Apple Dragon
 
 ## 当前版本
 
-1.3.3
+1.3.4
 
 ## 致谢
 
