@@ -96,17 +96,49 @@ jobs:
           )
           EOF
 
-      # 6. Build Universal Binary with py2app
-      - name: Build standalone application with py2app
+      # 6. Build arm64 version
+      - name: Build arm64 application
         run: |
-          # Build Universal Binary (supports both x86_64 and arm64)
+          # Clean previous builds
+          rm -rf build dist
+          
+          # Build arm64 version
+          python setup.py py2app --arch arm64
+          
+          # Create archive for arm64
+          cd dist
+          zip -r ../everything-arm64.zip "Everything.app"
+          cd ..
+
+      # 7. Build x86_64 version
+      - name: Build x86_64 application
+        run: |
+          # Clean previous builds
+          rm -rf build dist
+          
+          # Build x86_64 version
+          python setup.py py2app --arch x86_64
+          
+          # Create archive for x86_64
+          cd dist
+          zip -r ../everything-x86_64.zip "Everything.app"
+          cd ..
+
+      # 8. Build universal version
+      - name: Build universal application
+        run: |
+          # Clean previous builds
+          rm -rf build dist
+          
+          # Build universal version (supports both x86_64 and arm64)
           python setup.py py2app --arch universal2
           
-          # Create archive
+          # Create archive for universal
           cd dist
-          zip -r ../everything-py2app.zip "Everything.app"
+          zip -r ../everything-universal.zip "Everything.app"
+          cd ..
 
-      # 7. Create GitHub Release
+      # 9. Create GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
@@ -118,13 +150,35 @@ jobs:
           draft: false
           prerelease: false
 
-      # 8. Upload py2app Universal Binary version
-      - name: Upload py2app release asset
+      # 10. Upload arm64 release asset
+      - name: Upload arm64 release asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-py2app.zip
-          asset_name: everything-py2app.zip
+          asset_path: everything-arm64.zip
+          asset_name: everything-arm64.zip
+          asset_content_type: application/zip
+
+      # 11. Upload x86_64 release asset
+      - name: Upload x86_64 release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-x86_64.zip
+          asset_name: everything-x86_64.zip
+          asset_content_type: application/zip
+
+      # 12. Upload universal release asset
+      - name: Upload universal release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: everything-universal.zip
+          asset_name: everything-universal.zip
           asset_content_type: application/zip
