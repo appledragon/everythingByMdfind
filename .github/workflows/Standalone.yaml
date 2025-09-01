@@ -96,35 +96,7 @@ jobs:
           )
           EOF
 
-      # 6. Build arm64 version
-      - name: Build arm64 application
-        run: |
-          # Clean previous builds
-          rm -rf build dist
-          
-          # Build arm64 version
-          python setup.py py2app --arch arm64
-          
-          # Create archive for arm64
-          cd dist
-          zip -r ../everything-arm64.zip "Everything.app"
-          cd ..
-
-      # 7. Build x86_64 version
-      - name: Build x86_64 application
-        run: |
-          # Clean previous builds
-          rm -rf build dist
-          
-          # Build x86_64 version
-          python setup.py py2app --arch x86_64
-          
-          # Create archive for x86_64
-          cd dist
-          zip -r ../everything-x86_64.zip "Everything.app"
-          cd ..
-
-      # 8. Build universal version
+      # 6. Build universal application
       - name: Build universal application
         run: |
           # Clean previous builds
@@ -133,12 +105,12 @@ jobs:
           # Build universal version (supports both x86_64 and arm64)
           python setup.py py2app --arch universal2
           
-          # Create archive for universal
+          # Create archive
           cd dist
-          zip -r ../everything-universal.zip "Everything.app"
+          zip -r ../everything.zip "Everything.app"
           cd ..
 
-      # 9. Create GitHub Release
+      # 7. Create GitHub Release
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
@@ -150,35 +122,13 @@ jobs:
           draft: false
           prerelease: false
 
-      # 10. Upload arm64 release asset
-      - name: Upload arm64 release asset
+      # 8. Upload release asset
+      - name: Upload release asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-arm64.zip
-          asset_name: everything-arm64.zip
-          asset_content_type: application/zip
-
-      # 11. Upload x86_64 release asset
-      - name: Upload x86_64 release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-x86_64.zip
-          asset_name: everything-x86_64.zip
-          asset_content_type: application/zip
-
-      # 12. Upload universal release asset
-      - name: Upload universal release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: everything-universal.zip
-          asset_name: everything-universal.zip
+          asset_path: everything.zip
+          asset_name: everything.zip
           asset_content_type: application/zip
