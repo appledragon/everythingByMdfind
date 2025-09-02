@@ -1260,6 +1260,35 @@ class MdfindApp(QMainWindow):
     def on_tab_changed(self, index):
         """Handle tab change event"""
         if index >= 0:
+            # Get the search tab for this index
+            current_tab = self.get_current_tab()
+            if current_tab:
+                # Temporarily block signals to prevent triggering new searches
+                self.edit_query.blockSignals(True)
+                self.edit_dir.blockSignals(True)
+                self.chk_file_name.blockSignals(True)
+                self.chk_match_case.blockSignals(True)
+                self.chk_full_match.blockSignals(True)
+                
+                try:
+                    # Update the query input field with the tab's query
+                    self.edit_query.setText(current_tab.query)
+                    
+                    # Update the directory input field with the tab's directory
+                    self.edit_dir.setText(current_tab.directory)
+                    
+                    # Update the checkboxes with the tab's search parameters
+                    self.chk_file_name.setChecked(current_tab.file_name_search)
+                    self.chk_match_case.setChecked(current_tab.match_case)
+                    self.chk_full_match.setChecked(current_tab.full_match)
+                finally:
+                    # Re-enable signals
+                    self.edit_query.blockSignals(False)
+                    self.edit_dir.blockSignals(False)
+                    self.chk_file_name.blockSignals(False)
+                    self.chk_match_case.blockSignals(False)
+                    self.chk_full_match.blockSignals(False)
+            
             # Update the preview panel based on the new tab's selection
             self.on_tree_selection_changed()
     
