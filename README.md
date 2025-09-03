@@ -118,8 +118,8 @@ You can use py2app to create a standalone macOS application:
         'plist': {
             'CFBundleName': 'Everything',
             'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.4',
-            'CFBundleShortVersionString': '1.3.4',
+            'CFBundleVersion': '1.3.5',
+            'CFBundleShortVersionString': '1.3.5',
             'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
             'LSMinimumSystemVersion': '10.14',
             'NSHighResolutionCapable': True,
@@ -157,7 +157,7 @@ Apple Dragon
 
 ## Version
 
-1.3.4
+1.3.5
 
 ## Acknowledgements
 

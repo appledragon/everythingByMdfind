@@ -123,8 +123,8 @@ py2appでmacOS用実行ファイル生成:
         'plist': {
             'CFBundleName': 'Everything',
             'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.4',
-            'CFBundleShortVersionString': '1.3.4',
+            'CFBundleVersion': '1.3.5',
+            'CFBundleShortVersionString': '1.3.5',
             'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
             'LSMinimumSystemVersion': '10.14',
             'NSHighResolutionCapable': True,
@@ -160,7 +160,7 @@ Apple Dragon
 
 ## 最新バージョン
 
-1.3.4
+1.3.5
 
 ## クレジット
 
