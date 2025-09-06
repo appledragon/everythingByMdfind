@@ -555,7 +555,7 @@ class StandalonePlayerWindow(QMainWindow):
         controls_layout.addWidget(self.play_button)
         
         # Time label
-        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label = QLabel("🕒 00:00 / 00:00")
         self.time_label.setMinimumWidth(100)
         controls_layout.addWidget(self.time_label)
         
@@ -655,7 +655,7 @@ class StandalonePlayerWindow(QMainWindow):
             total_mins = total_duration // 60000
             total_secs = (total_duration % 60000) // 1000
             
-            self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+            self.time_label.setText(f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
         except Exception:
             pass
     
@@ -721,21 +721,21 @@ class MdfindApp(QMainWindow):
 
         # ========== Menu Bar ==========
         menubar = self.menuBar()
-        help_menu = menubar.addMenu('Help')
-        about_action = help_menu.addAction('About')
+        help_menu = menubar.addMenu('❓ Help')
+        about_action = help_menu.addAction('ℹ️ About')
         about_action.triggered.connect(self.show_about_dialog)
         # Add a "History" menu
-        history_menu = menubar.addMenu('History')
-        clear_history_action = history_menu.addAction('Clear History')
+        history_menu = menubar.addMenu('📚 History')
+        clear_history_action = history_menu.addAction('🧹 Clear History')
         clear_history_action.triggered.connect(self.clear_history)
-        enable_history_action = history_menu.addAction("Enable History")
+        enable_history_action = history_menu.addAction("✅ Enable History")
         enable_history_action.setCheckable(True)
         enable_history_action.setChecked(self.history_enabled)
         enable_history_action.triggered.connect(self.toggle_history)
 
         # Add a "View" menu
-        view_menu = menubar.addMenu('View')
-        toggle_preview_action = view_menu.addAction('Toggle Preview')
+        view_menu = menubar.addMenu('👀 View')
+        toggle_preview_action = view_menu.addAction('👁️ Toggle Preview')
         toggle_preview_action.setCheckable(True)
         toggle_preview_action.setChecked(self.preview_enabled) # Use the loaded setting instead of hardcoded False
         toggle_preview_action.triggered.connect(self.toggle_preview)
@@ -743,14 +743,14 @@ class MdfindApp(QMainWindow):
         self.toggle_preview_action = toggle_preview_action
 
         # Add continuous playback action
-        continuous_playback_action = view_menu.addAction('Continuous Playback')
+        continuous_playback_action = view_menu.addAction('🔄 Continuous Playback')
         continuous_playback_action.setCheckable(True)
         continuous_playback_action.setChecked(self.continuous_playback)
         continuous_playback_action.triggered.connect(self.toggle_continuous_playback)
         self.continuous_playback_action = continuous_playback_action
         
         # Added dark mode toggle action in the View menu
-        dark_mode_action = view_menu.addAction('Dark Mode')
+        dark_mode_action = view_menu.addAction('🌙 Dark Mode')
         dark_mode_action.setCheckable(True)
         dark_mode_action.setChecked(self.dark_mode)
         dark_mode_action.triggered.connect(self.toggle_dark_mode)
@@ -760,13 +760,13 @@ class MdfindApp(QMainWindow):
             self.set_non_dark_mode()
         
         # === Bookmarks Menu ===
-        bookmarks_menu = menubar.addMenu("Bookmarks")
-        bookmarks_menu.addAction("Large Files", self.bookmark_large_files)
-        bookmarks_menu.addAction("Video Files", self.bookmark_videos)
-        bookmarks_menu.addAction("Audio Files", self.bookmark_audio)
-        bookmarks_menu.addAction("Images", self.bookmark_images)
-        bookmarks_menu.addAction("Archives", self.bookmark_archives)
-        bookmarks_menu.addAction("Applications", self.bookmark_applications)
+        bookmarks_menu = menubar.addMenu("🔖 Bookmarks")
+        bookmarks_menu.addAction("📏 Large Files", self.bookmark_large_files)
+        bookmarks_menu.addAction("🎬 Video Files", self.bookmark_videos)
+        bookmarks_menu.addAction("🎵 Audio Files", self.bookmark_audio)
+        bookmarks_menu.addAction("🖼️ Images", self.bookmark_images)
+        bookmarks_menu.addAction("🗜️ Archives", self.bookmark_archives)
+        bookmarks_menu.addAction("📱 Applications", self.bookmark_applications)
         
         self.initialize_extension_emoji_map()
         
@@ -781,14 +781,14 @@ class MdfindApp(QMainWindow):
 
         # First row: Search Query input and statistics
         form_layout = QHBoxLayout()
-        lbl_query = QLabel("Search Query:")
+        lbl_query = QLabel("🔍 Search Query:")
         self.edit_query = QLineEdit()
-        self.lbl_items_found = QLabel("0 items found")
+        self.lbl_items_found = QLabel("📊 0 items found")
         
         # Add refresh button
-        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh = QPushButton("🔄 Refresh")
         self.btn_refresh.setToolTip("Refresh current search")
-        self.btn_refresh.setMaximumWidth(80)
+        self.btn_refresh.setMaximumWidth(100)
         self.btn_refresh.clicked.connect(self.refresh_current_search)
 
         form_layout.addWidget(lbl_query)
@@ -799,10 +799,10 @@ class MdfindApp(QMainWindow):
 
         # Second row: Directory selection (optional)
         form_layout2 = QHBoxLayout()
-        lbl_dir = QLabel("Directory (optional):")
+        lbl_dir = QLabel("📁 Directory (optional):")
         self.edit_dir = QLineEdit()
         self.edit_dir.setPlaceholderText(" Leave empty to search everywhere")
-        btn_select_dir = QPushButton("Select Dir")
+        btn_select_dir = QPushButton("📂 Select Dir")
         btn_select_dir.clicked.connect(self.select_directory)
 
         form_layout2.addWidget(lbl_dir)
@@ -811,21 +811,21 @@ class MdfindApp(QMainWindow):
         left_layout.addLayout(form_layout2)
 
         # Advanced Filters group
-        group_advanced = QGroupBox("Advanced Filters")
+        group_advanced = QGroupBox("⚙️ Advanced Filters")
         adv_layout = QHBoxLayout()
 
-        lbl_min_size = QLabel("Min Size (bytes):")
+        lbl_min_size = QLabel("📏 Min Size (bytes):")
         self.edit_min_size = QLineEdit()
-        lbl_max_size = QLabel("Max Size (bytes):")
+        lbl_max_size = QLabel("📐 Max Size (bytes):")
         self.edit_max_size = QLineEdit()
-        lbl_extension = QLabel("File Extension:")
+        lbl_extension = QLabel("📄 File Extension:")
         self.edit_extension = QLineEdit()
         self.edit_extension.setPlaceholderText("pdf;docx;xls")
 
-        self.chk_file_name = QCheckBox("Search by File Name")
+        self.chk_file_name = QCheckBox("📝 Search by File Name")
         self.chk_file_name.setChecked(True)
-        self.chk_match_case = QCheckBox("Match Case")
-        self.chk_full_match = QCheckBox("Full Match")
+        self.chk_match_case = QCheckBox("🔤 Match Case")
+        self.chk_full_match = QCheckBox("🎯 Full Match")
 
         adv_layout.addWidget(lbl_min_size, 2)
         adv_layout.addWidget(self.edit_min_size, 5)
@@ -869,11 +869,11 @@ class MdfindApp(QMainWindow):
         
         # Create tab context menu
         self.tab_context_menu = QMenu(self)
-        self.tab_context_menu.addAction("Close", self.close_current_tab)
-        self.tab_context_menu.addAction("Close Others", self.close_other_tabs)
-        self.tab_context_menu.addAction("Close to the Left", self.close_left_tabs)
-        self.tab_context_menu.addAction("Close to the Right", self.close_right_tabs)
-        self.tab_context_menu.addAction("Close All", self.close_all_tabs)
+        self.tab_context_menu.addAction("❌ Close", self.close_current_tab)
+        self.tab_context_menu.addAction("🚫 Close Others", self.close_other_tabs)
+        self.tab_context_menu.addAction("⬅️ Close to the Left", self.close_left_tabs)
+        self.tab_context_menu.addAction("➡️ Close to the Right", self.close_right_tabs)
+        self.tab_context_menu.addAction("🗑️ Close All", self.close_all_tabs)
         
         left_layout.addWidget(self.tab_widget, stretch=1)
         
@@ -885,7 +885,7 @@ class MdfindApp(QMainWindow):
         self.progress.setMaximum(100)
         left_layout.addWidget(self.progress)
 
-        btn_export = QPushButton("Export to CSV")
+        btn_export = QPushButton("📤 Export to CSV")
         btn_export.clicked.connect(self.export_to_csv)
         left_layout.addWidget(btn_export, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -897,12 +897,12 @@ class MdfindApp(QMainWindow):
         
         # Header layout with Preview title and buttons
         header_layout = QHBoxLayout()
-        preview_title = QLabel("<b>Preview</b>")
+        preview_title = QLabel("<b>🖼️ Preview</b>")
         header_layout.addWidget(preview_title)
         header_layout.addStretch()
         
         # Add a pop-out button
-        popout_button = QPushButton("□")  # Square symbol for pop-out
+        popout_button = QPushButton("🔲")  # Square symbol for pop-out
         popout_button.setFixedSize(24, 24)
         popout_button.setToolTip("Open in standalone player")
         popout_button.clicked.connect(self.open_standalone_player)
@@ -1021,7 +1021,7 @@ class MdfindApp(QMainWindow):
         video_controls_layout.addWidget(self.play_button)
         
         # Current time label
-        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label = QLabel("🕒 00:00 / 00:00")
         self.time_label.setMinimumWidth(100)
         video_controls_layout.addWidget(self.time_label)
         
@@ -1095,27 +1095,27 @@ class MdfindApp(QMainWindow):
         self.edit_extension.textChanged.connect(self.on_filter_changed)
 
         self.single_context_menu = QMenu(self)
-        self.single_context_menu.addAction("Open", self.open_with_default_app)
-        self.single_context_menu.addAction("Delete", self.delete_file)
-        self.single_context_menu.addAction("Copy to...", self.copy_file)
-        self.single_context_menu.addAction("Move to...", self.move_file)
-        self.single_context_menu.addAction("Rename", self.rename_file)
-        self.single_context_menu.addAction("Copy full path with file name", self.copy_full_path)
-        self.single_context_menu.addAction("Copy path without file name", self.copy_path_only)
-        self.single_context_menu.addAction("Copy file name only", self.copy_file_name_only)
+        self.single_context_menu.addAction("🚀 Open", self.open_with_default_app)
+        self.single_context_menu.addAction("🗑️ Delete", self.delete_file)
+        self.single_context_menu.addAction("📋 Copy to...", self.copy_file)
+        self.single_context_menu.addAction("📦 Move to...", self.move_file)
+        self.single_context_menu.addAction("✏️ Rename", self.rename_file)
+        self.single_context_menu.addAction("📄 Copy full path with file name", self.copy_full_path)
+        self.single_context_menu.addAction("📁 Copy path without file name", self.copy_path_only)
+        self.single_context_menu.addAction("📝 Copy file name only", self.copy_file_name_only)
         self.single_context_menu.addSeparator()
-        self.single_context_menu.addAction("Compress to ZIP", self.compress_file)
-        self.single_context_menu.addAction("Open in Finder", self.open_in_finder)
-        self.single_context_menu.addAction("Export to CSV", self.export_to_csv)
+        self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
+        self.single_context_menu.addAction("🔍 Open in Finder", self.open_in_finder)
+        self.single_context_menu.addAction("📤 Export to CSV", self.export_to_csv)
 
         self.multi_context_menu = QMenu(self)
-        self.multi_context_menu.addAction("Open", self.open_multiple_files)
-        self.multi_context_menu.addAction("Delete", self.delete_multiple_files)
-        self.multi_context_menu.addAction("Copy to...", self.copy_multiple_files)
-        self.multi_context_menu.addAction("Move to...", self.move_multiple_files)
-        self.multi_context_menu.addAction("Batch Rename", self.batch_rename_files)
+        self.multi_context_menu.addAction("🚀 Open", self.open_multiple_files)
+        self.multi_context_menu.addAction("🗑️ Delete", self.delete_multiple_files)
+        self.multi_context_menu.addAction("📋 Copy to...", self.copy_multiple_files)
+        self.multi_context_menu.addAction("📦 Move to...", self.move_multiple_files)
+        self.multi_context_menu.addAction("✏️ Batch Rename", self.batch_rename_files)
         self.multi_context_menu.addSeparator()
-        self.multi_context_menu.addAction("Compress to ZIP", self.compress_multiple_files)
+        self.multi_context_menu.addAction("🗜️ Compress to ZIP", self.compress_multiple_files)
 
         self.batch_size = 100
 
@@ -1489,7 +1489,7 @@ class MdfindApp(QMainWindow):
         # Reset controls before loading new media
         self.seek_slider.setValue(0)
         self.seek_slider.setRange(0, 0)
-        self.time_label.setText("00:00 / 00:00")
+        self.time_label.setText("🕒 00:00 / 00:00")
         self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         
         # Make video widget visible for video files
@@ -1506,7 +1506,7 @@ class MdfindApp(QMainWindow):
         # Reset controls before loading new audio
         self.seek_slider.setValue(0)
         self.seek_slider.setRange(0, 0)
-        self.time_label.setText("00:00 / 00:00")
+        self.time_label.setText("🕒 00:00 / 00:00")
         self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         
         # Hide video, show audio label
@@ -1561,7 +1561,7 @@ class MdfindApp(QMainWindow):
             total_mins = total_duration // 60000
             total_secs = (total_duration % 60000) // 1000
             
-            self.time_label.setText(f"{current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+            self.time_label.setText(f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
         except Exception:
             # Silently handle errors during position update to prevent player crashes
             pass
@@ -1762,10 +1762,10 @@ class MdfindApp(QMainWindow):
         search_tab.file_data = filtered_files
         
         if not filtered_files:
-            self.lbl_items_found.setText("0 items found")
+            self.lbl_items_found.setText("📊 0 items found")
             return
         
-        self.lbl_items_found.setText(f"{len(filtered_files)} items found")
+        self.lbl_items_found.setText(f"📊 {len(filtered_files)} items found")
 
         if search_tab.sort_column != -1:
             self.sort_data(search_tab)
@@ -1773,7 +1773,7 @@ class MdfindApp(QMainWindow):
             self.load_more_items(search_tab)
 
     def show_error(self, msg):
-        self.show_critical("Error", msg)
+        self.show_critical("❌ Error", msg)
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
@@ -1802,7 +1802,7 @@ class MdfindApp(QMainWindow):
         else:
             self.load_more_items(search_tab)
 
-        self.lbl_items_found.setText(f"{len(filtered_files)} items found")
+        self.lbl_items_found.setText(f"📊 {len(filtered_files)} items found")
 
     def apply_filters_and_sorting(self, files_info):
         filtered = files_info[:]
@@ -1938,7 +1938,7 @@ class MdfindApp(QMainWindow):
         if not path:
             return
         reply = self.show_question(
-            "Delete",
+            "🗑️ Delete",
             f"Are you sure you want to delete '{path}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -1961,7 +1961,7 @@ class MdfindApp(QMainWindow):
         if not files:
             return
         reply = self.show_question(
-            "Delete Multiple Files",
+            "🗑️ Delete Multiple Files",
             f"Are you sure you want to delete {len(files)} files?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -1982,11 +1982,11 @@ class MdfindApp(QMainWindow):
                     tree.takeTopLevelItem(index)
             if error_files:
                 self.show_warning(
-                    "Deletion Errors",
+                    "⚠️ Deletion Errors",
                     "Some files could not be deleted:\n" + "\n".join(error_files)
                 )
             else:
-                self.show_info("Success", f"Successfully deleted {len(files)} files.")
+                self.show_info("✅ Success", f"Successfully deleted {len(files)} files.")
 
     def copy_file(self):
         path = self.get_selected_file()
@@ -2017,11 +2017,11 @@ class MdfindApp(QMainWindow):
                 error_files.append(f"{path}: {str(e)}")
         if error_files:
             self.show_warning(
-                "Copy Errors",
+                "⚠️ Copy Errors",
                 f"Copied {success_count} files.\nErrors occurred with:\n" + "\n".join(error_files)
             )
         else:
-            self.show_info("Success", f"Successfully copied {success_count} files to {dest}")
+            self.show_info("✅ Success", f"Successfully copied {success_count} files to {dest}")
 
     def move_file(self):
         path = self.get_selected_file()
@@ -2062,11 +2062,11 @@ class MdfindApp(QMainWindow):
                 error_files.append(f"{path}: {str(e)}")
         if error_files:
             self.show_warning(
-                "Move Errors",
+                "⚠️ Move Errors",
                 f"Moved {success_count} files.\nErrors occurred with:\n" + "\n".join(error_files)
             )
         else:
-            self.show_info("Success", f"Successfully moved {success_count} files to {dest}")
+            self.show_info("✅ Success", f"Successfully moved {success_count} files to {dest}")
 
     def rename_file(self):
         path = self.get_selected_file()
@@ -2074,7 +2074,7 @@ class MdfindApp(QMainWindow):
             return
         directory = os.path.dirname(path)
         old_name = os.path.basename(path)
-        new_name, ok = QInputDialog.getText(self, "Rename File", f"Enter new name for {old_name}:", QLineEdit.EchoMode.Normal, old_name)
+        new_name, ok = QInputDialog.getText(self, "✏️ Rename File", f"Enter new name for {old_name}:", QLineEdit.EchoMode.Normal, old_name)
         if ok and new_name:
             new_full_path = os.path.join(directory, new_name)
             try:
@@ -2091,7 +2091,7 @@ class MdfindApp(QMainWindow):
                             display_name = f"{self.extension_emoji_map.get(ext, '📄')} {new_name}"
                         current_item.setText(0, display_name)
                         current_item.setText(3, new_full_path)
-                self.show_info("Success", "File renamed successfully.")
+                self.show_info("✅ Success", "File renamed successfully.")
             except Exception as e:
                 self.show_critical("Error", f"Could not rename file: {str(e)}")
 
@@ -2099,10 +2099,10 @@ class MdfindApp(QMainWindow):
         files = self.get_selected_files()
         if not files:
             return
-        prefix, ok_prefix = QInputDialog.getText(self, "Batch Rename", "Enter prefix (optional):")
+        prefix, ok_prefix = QInputDialog.getText(self, "✏️ Batch Rename", "Enter prefix (optional):")
         if not ok_prefix:
             return
-        suffix, ok_suffix = QInputDialog.getText(self, "Batch Rename", "Enter suffix (optional):")
+        suffix, ok_suffix = QInputDialog.getText(self, "✏️ Batch Rename", "Enter suffix (optional):")
         if not ok_suffix:
             return
 
@@ -2135,11 +2135,11 @@ class MdfindApp(QMainWindow):
 
         if error_files:
             self.show_warning(
-                "Batch Rename Errors",
+                "⚠️ Batch Rename Errors",
                 f"Renamed {success_count} files.\nErrors:\n" + "\n".join(error_files)
             )
         else:
-            self.show_info("Success", f"Successfully renamed {success_count} files.")
+            self.show_info("✅ Success", f"Successfully renamed {success_count} files.")
 
     # ========== Compression functions ==========
     def compress_file(self):
@@ -2181,14 +2181,14 @@ class MdfindApp(QMainWindow):
                 subprocess.run(["open", "-R", zip_path], check=True)
             
             self.show_info_dialog_with_action(
-                "Single File Compression", 
+                "🗜️ Single File Compression", 
                 f"File compressed to: {zip_path}", 
-                "Open in Finder", 
+                "🔍 Open in Finder", 
                 open_zip_in_finder
             )
             
         except Exception as e:
-            self.show_critical("Compression Error", f"Failed to compress file: {str(e)}")
+            self.show_critical("🗜️ Compression Error", f"Failed to compress file: {str(e)}")
 
     def compress_multiple_files(self):
         """Compress multiple files to ZIP"""
@@ -2231,14 +2231,14 @@ class MdfindApp(QMainWindow):
                 subprocess.run(["open", "-R", zip_path], check=True)
             
             self.show_info_dialog_with_action(
-                "Multiple Files Compression", 
+                "🗜️ Multiple Files Compression", 
                 f"{len(files)} items compressed to: {zip_path}", 
-                "Open in Finder", 
+                "🔍 Open in Finder", 
                 open_zip_in_finder
             )
             
         except Exception as e:
-            self.show_critical("Compression Error", f"Failed to compress files: {str(e)}")
+            self.show_critical("🗜️ Compression Error", f"Failed to compress files: {str(e)}")
 
     # ========== Copy path to clipboard ==========
     def show_tooltip(self, message):
@@ -2281,7 +2281,7 @@ class MdfindApp(QMainWindow):
     def export_to_csv(self):
         search_tab = self.get_current_tab()
         if not search_tab or not search_tab.file_data:
-            self.show_warning("Warning", "No data to export.")
+            self.show_warning("⚠️ Warning", "No data to export.")
             return
         file_path, _ = QFileDialog.getSaveFileName(self, "Export to CSV", "", "CSV Files (*.csv);;All Files (*)")
         if not file_path:
@@ -2292,7 +2292,7 @@ class MdfindApp(QMainWindow):
                 writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
                 for item in search_tab.file_data:
                     writer.writerow(item)
-            self.show_info("Success", f"Results exported to {file_path}")
+            self.show_info("✅ Success", f"Results exported to {file_path}")
         except Exception as e:
             self.show_critical("Error", str(e))
 
@@ -2740,7 +2740,7 @@ class MdfindApp(QMainWindow):
 
     def clear_history(self):
         reply = self.show_question(
-            "Clear History",
+            "🧹 Clear History",
             "Are you sure you want to clear your search history?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -2750,7 +2750,7 @@ class MdfindApp(QMainWindow):
             cfg["query_history"] = self.query_history
             write_config(cfg)
             self.query_completer.model().setStringList(self.query_history)
-            self.show_info("History Cleared", "Search history cleared.")
+            self.show_info("🧹 History Cleared", "Search history cleared.")
 
     def apply_dialog_dark_mode(self, dialog):
         """Apply dark mode styling to dialog boxes if dark mode is enabled"""
