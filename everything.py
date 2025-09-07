@@ -824,6 +824,7 @@ class MdfindApp(QMainWindow):
 
         self.chk_file_name = QCheckBox("📝 Search by File Name")
         self.chk_file_name.setChecked(True)
+        self.chk_file_name.setToolTip("When unchecked: Search in file content and metadata")
         self.chk_match_case = QCheckBox("🔤 Match Case")
         self.chk_full_match = QCheckBox("🎯 Full Match")
 
@@ -2435,7 +2436,7 @@ class MdfindApp(QMainWindow):
         # Calculate dynamic tab width
         dynamic_tab_width = self.calculate_tab_width()
         if self.dark_mode:
-            # Dark mode style
+            # Dark mode style with blue indicator for selected tab
             self.tab_widget.setStyleSheet(f"""
                 QTabWidget::pane {{
                     border: 1px solid #555555;
@@ -2448,7 +2449,8 @@ class MdfindApp(QMainWindow):
                     background: #3c3f41;
                     border: 1px solid #555555;
                     border-bottom: none;
-                    padding: 8px 12px;
+                    border-top: 2px solid transparent;
+                    padding: 6px 12px 8px 12px;
                     margin-right: 2px;
                     min-width: {dynamic_tab_width}px;
                     max-width: {dynamic_tab_width}px;
@@ -2457,13 +2459,18 @@ class MdfindApp(QMainWindow):
                 QTabBar::tab:selected {{
                     background: #2b2b2b;
                     border-color: #555555;
+                    border-top: 2px solid #007acc;
                 }}
                 QTabBar::tab:hover {{
                     background: #4a4a4a;
+                    border-top: 2px solid #4a9eff;
+                }}
+                QTabBar::tab:hover:selected {{
+                    border-top: 2px solid #007acc;
                 }}
             """)
         else:
-            # Light mode style
+            # Light mode style with blue indicator for selected tab
             self.tab_widget.setStyleSheet(f"""
                 QTabWidget::pane {{
                     border: 1px solid #cccccc;
@@ -2476,7 +2483,8 @@ class MdfindApp(QMainWindow):
                     background: #f0f0f0;
                     border: 1px solid #cccccc;
                     border-bottom: none;
-                    padding: 8px 12px;
+                    border-top: 3px solid transparent;
+                    padding: 6px 12px 8px 12px;
                     margin-right: 2px;
                     min-width: {dynamic_tab_width}px;
                     max-width: {dynamic_tab_width}px;
@@ -2485,9 +2493,14 @@ class MdfindApp(QMainWindow):
                 QTabBar::tab:selected {{
                     background: white;
                     border-color: #cccccc;
+                    border-top: 3px solid #007acc;
                 }}
                 QTabBar::tab:hover {{
                     background: #e0e0e0;
+                    border-top: 3px solid #4a9eff;
+                }}
+                QTabBar::tab:hover:selected {{
+                    border-top: 3px solid #007acc;
                 }}
             """)
         
