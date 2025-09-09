@@ -275,6 +275,7 @@ class SearchTab:
         self.all_file_data = []
         self.file_data = []
         self.current_loaded = 0
+        self.items_found_count = 0  # Store the number of items found for this tab
         
         # Create the tree widget for this tab
         self.tree = DraggableTreeWidget()
@@ -1296,6 +1297,9 @@ class MdfindApp(QMainWindow):
                     self.edit_min_size.setText(current_tab.min_size)
                     self.edit_max_size.setText(current_tab.max_size)
                     self.edit_extension.setText(current_tab.extensions)
+                    
+                    # Update the items found label with the tab's result count
+                    self.lbl_items_found.setText(f"📊 {current_tab.items_found_count} items found")
                 finally:
                     # Re-enable signals
                     self.edit_query.blockSignals(False)
@@ -1306,9 +1310,15 @@ class MdfindApp(QMainWindow):
                     self.edit_min_size.blockSignals(False)
                     self.edit_max_size.blockSignals(False)
                     self.edit_extension.blockSignals(False)
+            else:
+                # No current tab, reset items found label
+                self.lbl_items_found.setText("📊 0 items found")
             
             # Update the preview panel based on the new tab's selection
             self.on_tree_selection_changed()
+        else:
+            # No tabs available (index < 0), reset items found label
+            self.lbl_items_found.setText("📊 0 items found")
     
     def show_tab_context_menu(self, pos):
         """Show context menu for tabs"""
@@ -1762,6 +1772,9 @@ class MdfindApp(QMainWindow):
         filtered_files = self.apply_filters_and_sorting(search_tab.all_file_data)
         search_tab.file_data = filtered_files
         
+        # Update the tab's items found count
+        search_tab.items_found_count = len(filtered_files)
+        
         if not filtered_files:
             self.lbl_items_found.setText("📊 0 items found")
             return
@@ -1797,6 +1810,9 @@ class MdfindApp(QMainWindow):
         search_tab.file_data = filtered_files
         search_tab.tree.clear()
         search_tab.current_loaded = 0
+        
+        # Update the tab's items found count
+        search_tab.items_found_count = len(filtered_files)
 
         if search_tab.sort_column != -1:
             self.sort_data(search_tab)
