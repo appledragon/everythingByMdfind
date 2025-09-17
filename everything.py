@@ -219,7 +219,7 @@ class ExportFormatDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("🚀 Export Format Selection")
         self.setModal(True)
-        self.setFixedSize(500, 450)  # 增加尺寸以防止文字截断
+        self.setFixedSize(520, 480)  # 进一步增加尺寸以防止文字截断
         
         # Apply current theme styling
         if hasattr(parent, 'dark_mode') and parent.dark_mode:
@@ -312,12 +312,21 @@ class ExportFormatDialog(QDialog):
             """)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)  # 增加边距
+        layout.setContentsMargins(20, 25, 20, 20)  # 增加顶部边距以确保标题显示完整
         layout.setSpacing(8)  # 设置合适的间距
         
         # Title
         title = QLabel("📤 Choose Export Format")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 15px; padding: 5px;")
+        title.setStyleSheet("""
+            font-size: 18px; 
+            font-weight: bold; 
+            margin-bottom: 15px; 
+            padding: 8px 5px; 
+            min-height: 35px;
+            max-height: 50px;
+        """)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)  # 居中对齐
+        title.setWordWrap(True)  # 允许换行以防止截断
         layout.addWidget(title)
         
         # Format options
