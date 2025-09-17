@@ -1100,6 +1100,9 @@ class MdfindApp(QMainWindow):
         self.query_history = config.get("query_history", [])
         self.query_completer = QCompleter(self.query_history)
         self.query_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.query_completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.query_completer.setMaxVisibleItems(8)  # Show max 8 items in dropdown
+        self.query_completer.setFilterMode(Qt.MatchFlag.MatchContains)  # Match anywhere in string
         self.edit_query.setCompleter(self.query_completer)
 
         # ========== Signal bindings ==========
@@ -2826,6 +2829,28 @@ class MdfindApp(QMainWindow):
             #mainSplitter::handle:horizontal {
                 width: 8px;
             }
+            QListView {
+                background-color: #ffffff;
+                color: #24292f;
+                border: 1px solid #d1d9e0;
+                border-radius: 6px;
+                padding: 4px;
+                selection-background-color: #dbeafe;
+                outline: 0;
+            }
+            QListView::item {
+                padding: 8px 12px;
+                border: none;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QListView::item:hover {
+                background-color: #f6f8fa;
+            }
+            QListView::item:selected {
+                background-color: #dbeafe;
+                color: #1e40af;
+            }
         """)
         
         # Update close button style for light mode
@@ -3131,6 +3156,28 @@ class MdfindApp(QMainWindow):
             }
             #mainSplitter::handle:horizontal {
                 width: 8px;
+            }
+            QListView {
+                background-color: #2d2d30;
+                color: #d4d4d4;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                padding: 4px;
+                selection-background-color: #264f78;
+                outline: 0;
+            }
+            QListView::item {
+                padding: 8px 12px;
+                border: none;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QListView::item:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+            QListView::item:selected {
+                background-color: #264f78;
+                color: white;
             }
         """)
         
