@@ -717,16 +717,6 @@ class MdfindApp(QMainWindow):
         
         # Set window properties for modern appearance
         self.setWindowFlags(self.windowFlags())
-        
-        # Enable native styling on platforms that support it
-        if hasattr(self, 'setStyleSheet'):
-            # Apply base window styling
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #181818;
-                    border: 1px solid #323233;
-                }
-            """)
 
         # Define recognizable extensions before initializing extension emoji map
         self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
@@ -2604,12 +2594,10 @@ class MdfindApp(QMainWindow):
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #2c974b, stop: 1 #1f883d);
                 border-color: #1a7f37;
-                transform: translateY(-1px);
             }
             QPushButton:pressed {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #238636, stop: 1 #196c2e);
-                transform: translateY(1px);
             }
             QPushButton:disabled {
                 background-color: #f6f8fa;
@@ -2912,12 +2900,10 @@ class MdfindApp(QMainWindow):
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #1177bb, stop: 1 #0e639c);
                 border-color: #2196f3;
-                transform: translateY(-1px);
             }
             QPushButton:pressed {
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                     stop: 0 #083d5c, stop: 1 #062d43);
-                transform: translateY(1px);
             }
             QPushButton:disabled {
                 background-color: #404040;
