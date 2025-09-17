@@ -2357,94 +2357,7 @@ class MdfindApp(QMainWindow):
             # Force the button to show "×" (multiplication sign) for better visibility
             close_button.setText("×")
             
-            # Add a style specifically for this button
-            # Check if this is the current tab to apply different styling
-            is_current_tab = (index == self.tab_widget.currentIndex())
-            
-            if not self.dark_mode:
-                if is_current_tab:
-                    # Selected tab in light mode - make button more visible
-                    close_button.setStyleSheet("""
-                        QPushButton {
-                            background: rgba(0, 0, 0, 0.15);
-                            border: 1px solid #8c959f;
-                            padding: 2px;
-                            margin: 0px;
-                            font-family: Arial, sans-serif;
-                            font-size: 16px;
-                            font-weight: bold;
-                            color: #656d76;
-                            border-radius: 4px;
-                            min-width: 18px;
-                            min-height: 18px;
-                            max-width: 18px;
-                            max-height: 18px;
-                        }
-                        QPushButton:hover {
-                            background: rgba(220, 53, 69, 0.2);
-                            color: #dc3545;
-                            border: 1px solid #dc3545;
-                        }
-                        QPushButton:pressed {
-                            background: rgba(220, 53, 69, 0.3);
-                            color: #dc3545;
-                        }
-                    """)
-                else:
-                    # Unselected tab in light mode
-                    close_button.setStyleSheet("""
-                        QPushButton {
-                            background: rgba(0, 0, 0, 0.1);
-                            border: 1px solid #d1d9e0;
-                            padding: 2px;
-                            margin: 0px;
-                            font-family: Arial, sans-serif;
-                            font-size: 16px;
-                            font-weight: bold;
-                            color: #24292f;
-                            border-radius: 4px;
-                            min-width: 18px;
-                            min-height: 18px;
-                            max-width: 18px;
-                            max-height: 18px;
-                        }
-                        QPushButton:hover {
-                            background: rgba(220, 53, 69, 0.2);
-                            color: #dc3545;
-                            border: 1px solid #dc3545;
-                        }
-                        QPushButton:pressed {
-                            background: rgba(220, 53, 69, 0.3);
-                            color: #dc3545;
-                        }
-                    """)
-            else:
-                close_button.setStyleSheet("""
-                    QPushButton {
-                        background: rgba(255, 255, 255, 0.1);
-                        border: 1px solid #555555;
-                        padding: 2px;
-                        margin: 0px;
-                        font-family: Arial, sans-serif;
-                        font-size: 16px;
-                        font-weight: bold;
-                        color: #cccccc;
-                        border-radius: 4px;
-                        min-width: 18px;
-                        min-height: 18px;
-                        max-width: 18px;
-                        max-height: 18px;
-                    }
-                    QPushButton:hover {
-                        background: rgba(220, 53, 69, 0.2);
-                        color: #ff6b6b;
-                        border: 1px solid #ff6b6b;
-                    }
-                    QPushButton:pressed {
-                        background: rgba(220, 53, 69, 0.3);
-                        color: #ff6b6b;
-                    }
-                """)
+            # No need to set individual styles - they are handled by the main stylesheet
     
     def update_all_tab_close_buttons(self):
         """Update all tab close buttons to show clear X"""
@@ -2943,26 +2856,59 @@ class MdfindApp(QMainWindow):
             #previewCloseButton:pressed {
                 background-color: #b31d28;
             }
+            QTabWidget::pane {
+                border: 1px solid #cccccc;
+                background: white;
+            }
+            QTabBar {
+                alignment: left;
+            }
+            QTabBar::tab {
+                background: #f0f0f0;
+                border: 1px solid #cccccc;
+                border-bottom: none;
+                border-top: 3px solid transparent;
+                padding: 6px 12px 8px 12px;
+                margin-right: 2px;
+                min-width: 120px;
+                max-width: 200px;
+                color: #000000;
+            }
+            QTabBar::tab:selected {
+                background: white;
+                border-color: #cccccc;
+                border-top: 3px solid #007acc;
+            }
+            QTabBar::tab:hover {
+                background: #e0e0e0;
+                border-top: 3px solid #4a9eff;
+            }
+            QTabBar::tab:hover:selected {
+                border-top: 3px solid #007acc;
+            }
+            QTabBar QToolButton {
+                background: rgba(0, 0, 0, 0.1);
+                border: 1px solid #d1d9e0;
+                border-radius: 4px;
+                color: #24292f;
+                font-size: 16px;
+                font-weight: bold;
+                min-width: 18px;
+                min-height: 18px;
+                max-width: 18px;
+                max-height: 18px;
+                margin: 2px;
+            }
+            QTabBar QToolButton:hover {
+                background: rgba(220, 53, 69, 0.2);
+                color: #dc3545;
+                border: 1px solid #dc3545;
+            }
+            QTabBar QToolButton:pressed {
+                background: rgba(220, 53, 69, 0.3);
+                color: #dc3545;
+            }
         """)
-        
-        # Update close button style for light mode
-        if hasattr(self, 'preview_container'):
-            close_btn = self.preview_container.findChild(QPushButton, "previewCloseButton")
-            if close_btn:
-                close_btn.setStyleSheet("""
-                    #previewCloseButton {
-                        border: none;
-                        border-radius: 12px;
-                        font-size: 14px;
-                        font-weight: bold;
-                        background-color: transparent;
-                        color: #555555;
-                    }
-                    #previewCloseButton:hover {
-                        background-color: #d32f2f;
-                        color: white;
-                    }
-                """)
         
         # Update tab widget style and close buttons if tab_widget exists
         if hasattr(self, 'tab_widget'):
@@ -3352,26 +3298,59 @@ class MdfindApp(QMainWindow):
             #previewCloseButton:pressed {
                 background-color: #c50e1f;
             }
+            QTabWidget::pane {
+                border: 1px solid #555555;
+                background: #2b2b2b;
+            }
+            QTabBar {
+                alignment: left;
+            }
+            QTabBar::tab {
+                background: #3c3f41;
+                border: 1px solid #555555;
+                border-bottom: none;
+                border-top: 2px solid transparent;
+                padding: 6px 12px 8px 12px;
+                margin-right: 2px;
+                min-width: 120px;
+                max-width: 200px;
+                color: #f0f0f0;
+            }
+            QTabBar::tab:selected {
+                background: #2b2b2b;
+                border-color: #555555;
+                border-top: 2px solid #007acc;
+            }
+            QTabBar::tab:hover {
+                background: #4a4a4a;
+                border-top: 2px solid #4a9eff;
+            }
+            QTabBar::tab:hover:selected {
+                border-top: 2px solid #007acc;
+            }
+            QTabBar QToolButton {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid #555555;
+                border-radius: 4px;
+                color: #cccccc;
+                font-size: 16px;
+                font-weight: bold;
+                min-width: 18px;
+                min-height: 18px;
+                max-width: 18px;
+                max-height: 18px;
+                margin: 2px;
+            }
+            QTabBar QToolButton:hover {
+                background: rgba(220, 53, 69, 0.2);
+                color: #ff6b6b;
+                border: 1px solid #ff6b6b;
+            }
+            QTabBar QToolButton:pressed {
+                background: rgba(220, 53, 69, 0.3);
+                color: #ff6b6b;
+            }
         """)
-        
-        # Update close button style for dark mode
-        if hasattr(self, 'preview_container'):
-            close_btn = self.preview_container.findChild(QPushButton, "previewCloseButton")
-            if close_btn:
-                close_btn.setStyleSheet("""
-                    #previewCloseButton {
-                        border: none;
-                        border-radius: 12px;
-                        font-size: 14px;
-                        font-weight: bold;
-                        background-color: transparent;
-                        color: #aaaaaa;
-                    }
-                    #previewCloseButton:hover {
-                        background-color: #c62828;
-                        color: white;
-                    }
-                """)
         
         # Update tab widget style and close buttons if tab_widget exists
         if hasattr(self, 'tab_widget'):
@@ -3384,12 +3363,8 @@ class MdfindApp(QMainWindow):
         else:
             self.set_non_dark_mode()
             
-        # Update tab widget style
+        # Update tab widget style (for dynamic width calculation)
         self.update_tab_style()
-        
-        # Update all tab close buttons
-        for i in range(self.tab_widget.count()):
-            self.update_tab_close_button(i)
             
         # Update the standalone player too
         self.standalone_player.set_dark_mode(checked)
