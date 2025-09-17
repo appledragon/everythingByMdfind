@@ -2380,14 +2380,14 @@ class MdfindApp(QMainWindow):
             if not self.dark_mode:
                 close_button.setStyleSheet("""
                     QPushButton {
-                        background: rgba(0, 0, 0, 0.05);
-                        border: 1px solid #cccccc;
+                        background: rgba(0, 0, 0, 0.1);
+                        border: 1px solid #d1d9e0;
                         padding: 2px;
                         margin: 0px;
                         font-family: Arial, sans-serif;
                         font-size: 16px;
                         font-weight: bold;
-                        color: #666666;
+                        color: #24292f;
                         border-radius: 4px;
                         min-width: 18px;
                         min-height: 18px;
