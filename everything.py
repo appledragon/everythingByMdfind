@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
     QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
-    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget
+    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget, QDialog, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -211,6 +211,190 @@ class BeautifulToolTip(QWidget):
         self.hide()
         # Reset opacity for next time
         self.setWindowOpacity(1.0)
+
+
+# Export Format Selection Dialog
+class ExportFormatDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🚀 Export Format Selection")
+        self.setModal(True)
+        self.setFixedSize(450, 350)
+        
+        # Apply current theme styling
+        if hasattr(parent, 'dark_mode') and parent.dark_mode:
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: #2d2d30;
+                    color: #d4d4d4;
+                }
+                QLabel {
+                    color: #e1e4e8;
+                    font-size: 14px;
+                }
+                QRadioButton {
+                    color: #d4d4d4;
+                    font-size: 13px;
+                    padding: 8px;
+                }
+                QRadioButton::indicator {
+                    width: 16px;
+                    height: 16px;
+                }
+                QRadioButton::indicator:unchecked {
+                    border: 2px solid #404040;
+                    border-radius: 9px;
+                    background: #252526;
+                }
+                QRadioButton::indicator:checked {
+                    border: 2px solid #007fd4;
+                    border-radius: 9px;
+                    background: #007fd4;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0e4775, stop: 1 #0a3d66);
+                    border: 1px solid #1177bb;
+                    border-radius: 6px;
+                    padding: 10px 20px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #1177bb, stop: 1 #0e639c);
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: #ffffff;
+                    color: #24292f;
+                }
+                QLabel {
+                    color: #24292f;
+                    font-size: 14px;
+                }
+                QRadioButton {
+                    color: #24292f;
+                    font-size: 13px;
+                    padding: 8px;
+                }
+                QRadioButton::indicator {
+                    width: 16px;
+                    height: 16px;
+                }
+                QRadioButton::indicator:unchecked {
+                    border: 2px solid #d1d9e0;
+                    border-radius: 9px;
+                    background: #ffffff;
+                }
+                QRadioButton::indicator:checked {
+                    border: 2px solid #0969da;
+                    border-radius: 9px;
+                    background: #0969da;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                    border: 1px solid #1a7f37;
+                    border-radius: 6px;
+                    padding: 10px 20px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #1f883d);
+                }
+            """)
+        
+        layout = QVBoxLayout(self)
+        
+        # Title
+        title = QLabel("📤 Choose Export Format")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # Format options
+        self.format_group = QButtonGroup(self)
+        
+        # JSON format
+        json_radio = QRadioButton("📄 JSON - Modern structured data")
+        json_radio.setToolTip("Export as JSON with metadata and structured information")
+        self.format_group.addButton(json_radio, 0)
+        layout.addWidget(json_radio)
+        
+        json_desc = QLabel("    → Best for data processing, APIs, and modern applications")
+        json_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        layout.addWidget(json_desc)
+        
+        # Excel format
+        excel_radio = QRadioButton("📊 Excel - Spreadsheet with styling")
+        excel_radio.setToolTip("Export as Excel file with formatting and multiple columns")
+        self.format_group.addButton(excel_radio, 1)
+        layout.addWidget(excel_radio)
+        
+        excel_desc = QLabel("    → Perfect for data analysis, charts, and business reports")
+        excel_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        layout.addWidget(excel_desc)
+        
+        # HTML format
+        html_radio = QRadioButton("🌐 HTML - Interactive web page")
+        html_radio.setToolTip("Export as styled HTML page with search and filtering")
+        self.format_group.addButton(html_radio, 2)
+        layout.addWidget(html_radio)
+        
+        html_desc = QLabel("    → Great for sharing, presentations, and web viewing")
+        html_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        layout.addWidget(html_desc)
+        
+        # Markdown format
+        md_radio = QRadioButton("📝 Markdown - Documentation format")
+        md_radio.setToolTip("Export as Markdown for GitHub, documentation sites")
+        self.format_group.addButton(md_radio, 3)
+        layout.addWidget(md_radio)
+        
+        md_desc = QLabel("    → Ideal for GitHub, wikis, and documentation")
+        md_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        layout.addWidget(md_desc)
+        
+        # CSV format (legacy)
+        csv_radio = QRadioButton("📋 CSV - Legacy spreadsheet format")
+        csv_radio.setToolTip("Export as simple CSV for basic compatibility")
+        self.format_group.addButton(csv_radio, 4)
+        layout.addWidget(csv_radio)
+        
+        csv_desc = QLabel("    → Simple format for basic spreadsheet applications")
+        csv_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        layout.addWidget(csv_desc)
+        
+        # Set JSON as default
+        json_radio.setChecked(True)
+        
+        layout.addStretch()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        export_btn = QPushButton("📤 Export")
+        export_btn.clicked.connect(self.accept)
+        export_btn.setDefault(True)
+        button_layout.addWidget(export_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def get_selected_format(self):
+        """Return the selected export format"""
+        formats = ["json", "excel", "html", "markdown", "csv"]
+        return formats[self.format_group.checkedId()]
 
 
 # Custom Slider that responds to direct clicks
@@ -712,7 +896,7 @@ class MdfindApp(QMainWindow):
         self.continuous_playback = config.get("continuous_playback", False)
         self.slider_dragging = False  # Initialize slider_dragging attribute
         self.setWindowTitle("Everything by mdfind")
-        size = config.get("window_size", {"width": 1920, "height": 1080})
+        size = config.get("window_size", {"width": 1920, "height": 1000})
         self.resize(size["width"], size["height"])
         
         # Set window properties for modern appearance
@@ -725,6 +909,13 @@ class MdfindApp(QMainWindow):
 
         # ========== Menu Bar ==========
         menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu('📁 File')
+        export_action = file_menu.addAction('📤 Export Results...')
+        export_action.triggered.connect(self.export_results)
+        export_action.setShortcut('Ctrl+E')
+        
         help_menu = menubar.addMenu('❓ Help')
         about_action = help_menu.addAction('ℹ️ About')
         about_action.triggered.connect(self.show_about_dialog)
@@ -898,14 +1089,10 @@ class MdfindApp(QMainWindow):
         # Dictionary to store SearchTab instances by tab index
         self.search_tabs = {}
 
-        # Progress bar and Export button
+        # Progress bar
         self.progress = QProgressBar()
         self.progress.setMaximum(100)
         left_layout.addWidget(self.progress)
-
-        btn_export = QPushButton("📤 Export to CSV")
-        btn_export.clicked.connect(self.export_to_csv)
-        left_layout.addWidget(btn_export, alignment=Qt.AlignmentFlag.AlignRight)
 
         splitter.addWidget(left_container)
 
@@ -1108,7 +1295,7 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addSeparator()
         self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
         self.single_context_menu.addAction("🔍 Open in Finder", self.open_in_finder)
-        self.single_context_menu.addAction("📤 Export to CSV", self.export_to_csv)
+        self.single_context_menu.addAction("📤 Export Results", self.export_results)
 
         self.multi_context_menu = QMenu(self)
         self.multi_context_menu.addAction("🚀 Open", self.open_multiple_files)
@@ -2297,24 +2484,360 @@ class MdfindApp(QMainWindow):
         QApplication.clipboard().setText(filename)
         self.show_tooltip("✅ File name copied!")
 
-    # ========== Export to CSV ==========
-    def export_to_csv(self):
+    # ========== Export Data ==========
+    def export_results(self):
+        """Export search results to various formats"""
         search_tab = self.get_current_tab()
         if not search_tab or not search_tab.file_data:
             self.show_warning("⚠️ Warning", "No data to export.")
             return
-        file_path, _ = QFileDialog.getSaveFileName(self, "Export to CSV", "", "CSV Files (*.csv);;All Files (*)")
-        if not file_path:
+        
+        # Show format selection dialog
+        format_dialog = ExportFormatDialog(self)
+        if format_dialog.exec() != QDialog.DialogCode.Accepted:
             return
+            
+        export_format = format_dialog.get_selected_format()
+        
+        # Set up file dialog based on format
+        if export_format == "json":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export to JSON", "", 
+                "JSON Files (*.json);;All Files (*)"
+            )
+            if file_path:
+                self.export_to_json(file_path, search_tab.file_data)
+        elif export_format == "excel":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export to Excel", "", 
+                "Excel Files (*.xlsx);;All Files (*)"
+            )
+            if file_path:
+                self.export_to_excel(file_path, search_tab.file_data)
+        elif export_format == "html":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export to HTML", "", 
+                "HTML Files (*.html);;All Files (*)"
+            )
+            if file_path:
+                self.export_to_html(file_path, search_tab.file_data)
+        elif export_format == "markdown":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export to Markdown", "", 
+                "Markdown Files (*.md);;All Files (*)"
+            )
+            if file_path:
+                self.export_to_markdown(file_path, search_tab.file_data)
+        else:  # CSV (legacy support)
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export to CSV", "", 
+                "CSV Files (*.csv);;All Files (*)"
+            )
+            if file_path:
+                self.export_to_csv(file_path, search_tab.file_data)
+
+    def export_to_json(self, file_path, file_data):
+        """Export data to JSON format"""
+        try:
+            export_data = {
+                "exported_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+                "total_files": len(file_data),
+                "files": []
+            }
+            
+            for item in file_data:
+                name, size, mtime, path = item
+                file_info = {
+                    "name": name,
+                    "size_bytes": size,
+                    "size_human": format_size(size),
+                    "modified_timestamp": mtime,
+                    "modified_date": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime)),
+                    "path": path,
+                    "extension": os.path.splitext(name)[1].lower(),
+                    "is_directory": os.path.isdir(path)
+                }
+                export_data["files"].append(file_info)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2, ensure_ascii=False)
+                
+            self.show_info("✅ Success", f"Results exported to JSON: {file_path}")
+        except Exception as e:
+            self.show_critical("❌ Export Error", f"Failed to export JSON: {str(e)}")
+
+    def export_to_excel(self, file_path, file_data):
+        """Export data to Excel format"""
+        try:
+            # Check if openpyxl is available
+            try:
+                import openpyxl
+            except ImportError:
+                self.show_critical("❌ Missing Dependency", 
+                    "Excel export requires 'openpyxl' library.\nInstall with: pip install openpyxl")
+                return
+            
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Search Results"
+            
+            # Headers
+            headers = ['Name', 'Size (Bytes)', 'Size (Human)', 'Modified Date', 'Extension', 'Type', 'Path']
+            ws.append(headers)
+            
+            # Style headers
+            for cell in ws[1]:
+                cell.font = openpyxl.styles.Font(bold=True)
+                cell.fill = openpyxl.styles.PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                cell.font = openpyxl.styles.Font(color="FFFFFF", bold=True)
+            
+            # Data rows
+            for item in file_data:
+                name, size, mtime, path = item
+                ext = os.path.splitext(name)[1].lower()
+                file_type = "Directory" if os.path.isdir(path) else "File"
+                modified_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+                
+                ws.append([name, size, format_size(size), modified_date, ext, file_type, path])
+            
+            # Auto-adjust column widths
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Max width of 50
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            wb.save(file_path)
+            self.show_info("✅ Success", f"Results exported to Excel: {file_path}")
+        except Exception as e:
+            self.show_critical("❌ Export Error", f"Failed to export Excel: {str(e)}")
+
+    def export_to_html(self, file_path, file_data):
+        """Export data to HTML format"""
+        try:
+            html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results - Everything by mdfind</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f7;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #007acc, #005a9e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }}
+        .stats {{
+            display: flex;
+            justify-content: space-around;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }}
+        .stat {{
+            text-align: center;
+        }}
+        .stat-number {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #007acc;
+        }}
+        .stat-label {{
+            color: #6c757d;
+            font-size: 14px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        th, td {{
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }}
+        th {{
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }}
+        tr:hover {{
+            background-color: #f8f9fa;
+        }}
+        .file-icon {{
+            margin-right: 8px;
+        }}
+        .path {{
+            font-family: Monaco, 'Courier New', monospace;
+            font-size: 12px;
+            color: #6c757d;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            font-size: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Search Results</h1>
+            <p>Generated by Everything by mdfind</p>
+            <p>{time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-number">{len(file_data)}</div>
+                <div class="stat-label">Total Files</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">{sum(1 for item in file_data if os.path.isdir(item[3]))}</div>
+                <div class="stat-label">Directories</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">{format_size(sum(item[1] for item in file_data))}</div>
+                <div class="stat-label">Total Size</div>
+            </div>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>📁 Name</th>
+                    <th>📊 Size</th>
+                    <th>🕒 Modified</th>
+                    <th>📍 Path</th>
+                </tr>
+            </thead>
+            <tbody>'''
+            
+            for item in file_data:
+                name, size, mtime, path = item
+                is_dir = os.path.isdir(path)
+                icon = "📁" if is_dir else "📄"
+                ext = os.path.splitext(name)[1].lower()
+                
+                # Get appropriate emoji for file type
+                if not is_dir:
+                    icon = self.extension_emoji_map.get(ext, "📄")
+                
+                size_display = "—" if is_dir else format_size(size)
+                modified_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(mtime))
+                
+                html_content += f'''
+                <tr>
+                    <td><span class="file-icon">{icon}</span>{name}</td>
+                    <td>{size_display}</td>
+                    <td>{modified_date}</td>
+                    <td class="path" title="{path}">{path}</td>
+                </tr>'''
+            
+            html_content += '''
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            <p>Generated by <strong>Everything by mdfind</strong> - A powerful file search tool for macOS</p>
+        </div>
+    </div>
+</body>
+</html>'''
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+                
+            self.show_info("✅ Success", f"Results exported to HTML: {file_path}")
+        except Exception as e:
+            self.show_critical("❌ Export Error", f"Failed to export HTML: {str(e)}")
+
+    def export_to_markdown(self, file_path, file_data):
+        """Export data to Markdown format"""
+        try:
+            md_content = f'''# 🔍 Search Results
+
+**Generated by Everything by mdfind**  
+**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}  
+**Total Files:** {len(file_data)}
+
+## 📊 Statistics
+
+- **Total Files:** {len(file_data)}
+- **Directories:** {sum(1 for item in file_data if os.path.isdir(item[3]))}
+- **Regular Files:** {sum(1 for item in file_data if not os.path.isdir(item[3]))}
+- **Total Size:** {format_size(sum(item[1] for item in file_data))}
+
+## 📋 File List
+
+| Name | Size | Modified | Path |
+|------|------|----------|------|
+'''
+            
+            for item in file_data:
+                name, size, mtime, path = item
+                is_dir = os.path.isdir(path)
+                
+                # Escape pipe characters for markdown table
+                name_escaped = name.replace('|', '\\|')
+                path_escaped = path.replace('|', '\\|')
+                
+                size_display = "—" if is_dir else format_size(size)
+                modified_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(mtime))
+                
+                # Add appropriate emoji
+                icon = "📁" if is_dir else self.extension_emoji_map.get(os.path.splitext(name)[1].lower(), "📄")
+                
+                md_content += f'| {icon} {name_escaped} | {size_display} | {modified_date} | `{path_escaped}` |\n'
+            
+            md_content += f'''
+---
+
+*Generated by [Everything by mdfind](https://github.com/appledragon/everythingByMdfind) - {time.strftime('%Y-%m-%d %H:%M:%S')}*
+'''
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+                
+            self.show_info("✅ Success", f"Results exported to Markdown: {file_path}")
+        except Exception as e:
+            self.show_critical("❌ Export Error", f"Failed to export Markdown: {str(e)}")
+
+    def export_to_csv(self, file_path, file_data):
+        """Export data to CSV format (legacy)"""
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
-                for item in search_tab.file_data:
+                for item in file_data:
                     writer.writerow(item)
-            self.show_info("✅ Success", f"Results exported to {file_path}")
+            self.show_info("✅ Success", f"Results exported to CSV: {file_path}")
         except Exception as e:
-            self.show_critical("Error", str(e))
+            self.show_critical("❌ Export Error", f"Failed to export CSV: {str(e)}")
 
     # ========== Miscellaneous ==========
     def open_in_finder(self):
