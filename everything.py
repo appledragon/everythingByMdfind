@@ -931,19 +931,7 @@ class MdfindApp(QMainWindow):
         popout_button.setToolTip("Open in standalone player")
         popout_button.clicked.connect(self.open_standalone_player)
         popout_button.setObjectName("previewPopoutButton")
-        popout_button.setStyleSheet("""
-            #previewPopoutButton {
-                border: none;
-                border-radius: 12px;
-                font-size: 14px;
-                font-weight: bold;
-                background-color: transparent;
-            }
-            #previewPopoutButton:hover {
-                background-color: #4285f4;
-                color: white;
-            }
-        """)
+        popout_button.setObjectName("previewPopoutButton")
         
         # Add the popout button to the header
         header_layout.addWidget(popout_button)
@@ -955,20 +943,7 @@ class MdfindApp(QMainWindow):
         close_button.clicked.connect(self.close_preview)
         
         # Apply special styling to the close button to make it more elegant
-        close_button.setObjectName("previewCloseButton")  # Set object name for styling
-        close_button.setStyleSheet("""
-            #previewCloseButton {
-                border: none;
-                border-radius: 12px;
-                font-size: 14px;
-                font-weight: bold;
-                background-color: transparent;
-            }
-            #previewCloseButton:hover {
-                background-color: #d32f2f;
-                color: white;
-            }
-        """)
+        close_button.setObjectName("previewCloseButton")
         
         header_layout.addWidget(close_button)
         
@@ -2936,6 +2911,38 @@ class MdfindApp(QMainWindow):
                 padding: 6px 8px;
                 font-size: 12px;
             }
+            #previewPopoutButton {
+                background-color: rgba(0, 0, 0, 0.05);
+                border: 1px solid #d1d9e0;
+                border-radius: 4px;
+                color: #24292f;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            #previewPopoutButton:hover {
+                background-color: #0969da;
+                border-color: #0969da;
+                color: white;
+            }
+            #previewPopoutButton:pressed {
+                background-color: #0550ae;
+            }
+            #previewCloseButton {
+                background-color: rgba(0, 0, 0, 0.05);
+                border: 1px solid #d1d9e0;
+                border-radius: 4px;
+                color: #24292f;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            #previewCloseButton:hover {
+                background-color: #d73a49;
+                border-color: #d73a49;
+                color: white;
+            }
+            #previewCloseButton:pressed {
+                background-color: #b31d28;
+            }
         """)
         
         # Update close button style for light mode
@@ -3312,6 +3319,38 @@ class MdfindApp(QMainWindow):
                 border-radius: 4px;
                 padding: 6px 8px;
                 font-size: 12px;
+            }
+            #previewPopoutButton {
+                background-color: rgba(255, 255, 255, 0.1);
+                border: 1px solid #404040;
+                border-radius: 4px;
+                color: #d4d4d4;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            #previewPopoutButton:hover {
+                background-color: #007fd4;
+                border-color: #007fd4;
+                color: white;
+            }
+            #previewPopoutButton:pressed {
+                background-color: #005a9e;
+            }
+            #previewCloseButton {
+                background-color: rgba(255, 255, 255, 0.1);
+                border: 1px solid #404040;
+                border-radius: 4px;
+                color: #d4d4d4;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            #previewCloseButton:hover {
+                background-color: #e81123;
+                border-color: #e81123;
+                color: white;
+            }
+            #previewCloseButton:pressed {
+                background-color: #c50e1f;
             }
         """)
         
