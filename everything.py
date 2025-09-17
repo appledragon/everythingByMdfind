@@ -219,7 +219,7 @@ class ExportFormatDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("🚀 Export Format Selection")
         self.setModal(True)
-        self.setFixedSize(450, 350)
+        self.setFixedSize(500, 450)  # 增加尺寸以防止文字截断
         
         # Apply current theme styling
         if hasattr(parent, 'dark_mode') and parent.dark_mode:
@@ -312,10 +312,12 @@ class ExportFormatDialog(QDialog):
             """)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)  # 增加边距
+        layout.setSpacing(8)  # 设置合适的间距
         
         # Title
         title = QLabel("📤 Choose Export Format")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 15px; padding: 5px;")
         layout.addWidget(title)
         
         # Format options
@@ -328,8 +330,11 @@ class ExportFormatDialog(QDialog):
         layout.addWidget(json_radio)
         
         json_desc = QLabel("    → Best for data processing, APIs, and modern applications")
-        json_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        json_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
+        json_desc.setWordWrap(True)  # 允许换行
         layout.addWidget(json_desc)
+        
+        layout.addSpacing(5)  # 添加间距
         
         # Excel format
         excel_radio = QRadioButton("📊 Excel - Spreadsheet with styling")
@@ -338,8 +343,11 @@ class ExportFormatDialog(QDialog):
         layout.addWidget(excel_radio)
         
         excel_desc = QLabel("    → Perfect for data analysis, charts, and business reports")
-        excel_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        excel_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
+        excel_desc.setWordWrap(True)  # 允许换行
         layout.addWidget(excel_desc)
+        
+        layout.addSpacing(5)  # 添加间距
         
         # HTML format
         html_radio = QRadioButton("🌐 HTML - Interactive web page")
@@ -348,8 +356,11 @@ class ExportFormatDialog(QDialog):
         layout.addWidget(html_radio)
         
         html_desc = QLabel("    → Great for sharing, presentations, and web viewing")
-        html_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        html_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
+        html_desc.setWordWrap(True)  # 允许换行
         layout.addWidget(html_desc)
+        
+        layout.addSpacing(5)  # 添加间距
         
         # Markdown format
         md_radio = QRadioButton("📝 Markdown - Documentation format")
@@ -358,8 +369,11 @@ class ExportFormatDialog(QDialog):
         layout.addWidget(md_radio)
         
         md_desc = QLabel("    → Ideal for GitHub, wikis, and documentation")
-        md_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        md_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
+        md_desc.setWordWrap(True)  # 允许换行
         layout.addWidget(md_desc)
+        
+        layout.addSpacing(5)  # 添加间距
         
         # CSV format (legacy)
         csv_radio = QRadioButton("📋 CSV - Legacy spreadsheet format")
@@ -368,7 +382,8 @@ class ExportFormatDialog(QDialog):
         layout.addWidget(csv_radio)
         
         csv_desc = QLabel("    → Simple format for basic spreadsheet applications")
-        csv_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px;")
+        csv_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
+        csv_desc.setWordWrap(True)  # 允许换行
         layout.addWidget(csv_desc)
         
         # Set JSON as default
@@ -395,6 +410,121 @@ class ExportFormatDialog(QDialog):
         """Return the selected export format"""
         formats = ["json", "excel", "html", "markdown", "csv"]
         return formats[self.format_group.checkedId()]
+
+
+# Export Success Dialog with multiple actions
+class ExportSuccessDialog(QDialog):
+    def __init__(self, parent=None, file_path="", export_format=""):
+        super().__init__(parent)
+        self.file_path = file_path
+        self.export_format = export_format
+        self.setWindowTitle("✅ Export Successful")
+        self.setModal(True)
+        self.setFixedSize(420, 200)
+        
+        # Apply current theme styling
+        if hasattr(parent, 'dark_mode') and parent.dark_mode:
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: #2d2d30;
+                    color: #d4d4d4;
+                }
+                QLabel {
+                    color: #e1e4e8;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0e4775, stop: 1 #0a3d66);
+                    border: 1px solid #1177bb;
+                    border-radius: 6px;
+                    padding: 10px 16px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #1177bb, stop: 1 #0e639c);
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QDialog {
+                    background-color: #ffffff;
+                    color: #24292f;
+                }
+                QLabel {
+                    color: #24292f;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                    border: 1px solid #1a7f37;
+                    border-radius: 6px;
+                    padding: 10px 16px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #1f883d);
+                }
+            """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Success message
+        success_label = QLabel(f"✅ Successfully exported {export_format.upper()} file!")
+        success_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #28a745; margin-bottom: 10px;")
+        layout.addWidget(success_label)
+        
+        # File path
+        path_label = QLabel(f"📁 Location: {file_path}")
+        path_label.setStyleSheet("font-size: 12px; word-wrap: true; margin-bottom: 10px;")
+        path_label.setWordWrap(True)
+        layout.addWidget(path_label)
+        
+        layout.addStretch()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        # OK button
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        ok_btn.setDefault(True)
+        button_layout.addWidget(ok_btn)
+        
+        # Open file button
+        open_btn = QPushButton("📄 Open File")
+        open_btn.clicked.connect(self.open_file)
+        button_layout.addWidget(open_btn)
+        
+        # Open in Finder button
+        finder_btn = QPushButton("🔍 Open in Finder")
+        finder_btn.clicked.connect(self.open_in_finder)
+        button_layout.addWidget(finder_btn)
+        
+        layout.addLayout(button_layout)
+    
+    def open_file(self):
+        """Open the exported file with default application"""
+        try:
+            subprocess.run(["open", self.file_path], check=True)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open file: {str(e)}")
+    
+    def open_in_finder(self):
+        """Open the file location in Finder"""
+        try:
+            subprocess.run(["open", "-R", self.file_path], check=True)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open Finder: {str(e)}")
 
 
 # Custom Slider that responds to direct clicks
@@ -2562,7 +2692,9 @@ class MdfindApp(QMainWindow):
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, indent=2, ensure_ascii=False)
                 
-            self.show_info("✅ Success", f"Results exported to JSON: {file_path}")
+            # Show success dialog with action buttons
+            success_dialog = ExportSuccessDialog(self, file_path, "json")
+            success_dialog.exec()
         except Exception as e:
             self.show_critical("❌ Export Error", f"Failed to export JSON: {str(e)}")
 
@@ -2614,7 +2746,9 @@ class MdfindApp(QMainWindow):
                 ws.column_dimensions[column_letter].width = adjusted_width
             
             wb.save(file_path)
-            self.show_info("✅ Success", f"Results exported to Excel: {file_path}")
+            # Show success dialog with action buttons
+            success_dialog = ExportSuccessDialog(self, file_path, "excel")
+            success_dialog.exec()
         except Exception as e:
             self.show_critical("❌ Export Error", f"Failed to export Excel: {str(e)}")
 
@@ -2772,7 +2906,9 @@ class MdfindApp(QMainWindow):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
                 
-            self.show_info("✅ Success", f"Results exported to HTML: {file_path}")
+            # Show success dialog with action buttons
+            success_dialog = ExportSuccessDialog(self, file_path, "html")
+            success_dialog.exec()
         except Exception as e:
             self.show_critical("❌ Export Error", f"Failed to export HTML: {str(e)}")
 
@@ -2823,7 +2959,9 @@ class MdfindApp(QMainWindow):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(md_content)
                 
-            self.show_info("✅ Success", f"Results exported to Markdown: {file_path}")
+            # Show success dialog with action buttons
+            success_dialog = ExportSuccessDialog(self, file_path, "markdown")
+            success_dialog.exec()
         except Exception as e:
             self.show_critical("❌ Export Error", f"Failed to export Markdown: {str(e)}")
 
@@ -2835,7 +2973,9 @@ class MdfindApp(QMainWindow):
                 writer.writerow(['Name', 'Size', 'Modification Time', 'Path'])
                 for item in file_data:
                     writer.writerow(item)
-            self.show_info("✅ Success", f"Results exported to CSV: {file_path}")
+            # Show success dialog with action buttons
+            success_dialog = ExportSuccessDialog(self, file_path, "csv")
+            success_dialog.exec()
         except Exception as e:
             self.show_critical("❌ Export Error", f"Failed to export CSV: {str(e)}")
 
