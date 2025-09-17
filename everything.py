@@ -2807,6 +2807,11 @@ class MdfindApp(QMainWindow):
             QMenu::item:selected {
                 background-color: #dbeafe;
             }
+            QMenu::separator {
+                height: 1px;
+                background-color: #d1d9e0;
+                margin: 4px 8px;
+            }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
@@ -2886,6 +2891,50 @@ class MdfindApp(QMainWindow):
             QListView::item:selected {
                 background-color: #dbeafe;
                 color: #1e40af;
+            }
+            QScrollBar:vertical {
+                background-color: #f6f8fa;
+                width: 14px;
+                margin: 0;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #d1d9e0;
+                border-radius: 7px;
+                min-height: 20px;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #8c959f;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar:horizontal {
+                background-color: #f6f8fa;
+                height: 14px;
+                margin: 0;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #d1d9e0;
+                border-radius: 7px;
+                min-width: 20px;
+                margin: 2px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #8c959f;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+            QToolTip {
+                background-color: #ffffff;
+                color: #24292f;
+                border: 1px solid #d1d9e0;
+                border-radius: 4px;
+                padding: 6px 8px;
+                font-size: 12px;
             }
         """)
         
@@ -3135,6 +3184,11 @@ class MdfindApp(QMainWindow):
             QMenu::item:selected {
                 background-color: #264f78;
             }
+            QMenu::separator {
+                height: 1px;
+                background-color: #404040;
+                margin: 4px 8px;
+            }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
@@ -3214,6 +3268,50 @@ class MdfindApp(QMainWindow):
             QListView::item:selected {
                 background-color: #264f78;
                 color: white;
+            }
+            QScrollBar:vertical {
+                background-color: #2d2d30;
+                width: 14px;
+                margin: 0;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #555555;
+                border-radius: 7px;
+                min-height: 20px;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #666666;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar:horizontal {
+                background-color: #2d2d30;
+                height: 14px;
+                margin: 0;
+                border-radius: 7px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #555555;
+                border-radius: 7px;
+                min-width: 20px;
+                margin: 2px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #666666;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+            QToolTip {
+                background-color: #2d2d30;
+                color: #d4d4d4;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 6px 8px;
+                font-size: 12px;
             }
         """)
         
@@ -3301,25 +3399,71 @@ class MdfindApp(QMainWindow):
             self.show_info("🧹 History Cleared", "Search history cleared.")
 
     def apply_dialog_dark_mode(self, dialog):
-        """Apply dark mode styling to dialog boxes if dark mode is enabled"""
+        """Apply modern styling to dialog boxes based on current theme"""
         if self.dark_mode:
             dialog.setStyleSheet("""
-                QMessageBox {
+                QDialog, QMessageBox {
                     background-color: #2d2d30;
-                    color: #f0f0f0;
+                    color: #d4d4d4;
+                    border: 1px solid #404040;
+                    border-radius: 8px;
                 }
                 QLabel {
-                    color: #f0f0f0;
+                    color: #d4d4d4;
+                    font-size: 13px;
+                    padding: 8px;
                 }
                 QPushButton {
-                    background-color: #5a5a5a;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 5px 10px;
-                    color: #f0f0f0;
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #0e4775, stop: 1 #0a3d66);
+                    border: 1px solid #1177bb;
+                    border-radius: 6px;
+                    padding: 10px 20px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
                 }
                 QPushButton:hover {
-                    background-color: #707070;
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #1177bb, stop: 1 #0e639c);
+                    border-color: #2196f3;
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #083d5c, stop: 1 #062d43);
+                }
+            """)
+        else:
+            dialog.setStyleSheet("""
+                QDialog, QMessageBox {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 8px;
+                }
+                QLabel {
+                    color: #24292f;
+                    font-size: 13px;
+                    padding: 8px;
+                }
+                QPushButton {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2ea043, stop: 1 #238636);
+                    border: 1px solid #1a7f37;
+                    border-radius: 6px;
+                    padding: 10px 20px;
+                    color: white;
+                    font-weight: 600;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #2c974b, stop: 1 #1f883d);
+                    border-color: #1a7f37;
+                }
+                QPushButton:pressed {
+                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                        stop: 0 #238636, stop: 1 #196c2e);
                 }
             """)
 
