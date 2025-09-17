@@ -1341,6 +1341,9 @@ class MdfindApp(QMainWindow):
             
             # Update the preview panel based on the new tab's selection
             self.on_tree_selection_changed()
+            
+            # Update all tab close buttons since current tab changed
+            self.update_all_tab_close_buttons()
         else:
             # No tabs available (index < 0), reset items found label
             self.lbl_items_found.setText("📊 0 items found")
@@ -2380,33 +2383,66 @@ class MdfindApp(QMainWindow):
             close_button.setText("×")
             
             # Add a style specifically for this button
+            # Check if this is the current tab to apply different styling
+            is_current_tab = (index == self.tab_widget.currentIndex())
+            
             if not self.dark_mode:
-                close_button.setStyleSheet("""
-                    QPushButton {
-                        background: rgba(0, 0, 0, 0.1);
-                        border: 1px solid #d1d9e0;
-                        padding: 2px;
-                        margin: 0px;
-                        font-family: Arial, sans-serif;
-                        font-size: 16px;
-                        font-weight: bold;
-                        color: #24292f;
-                        border-radius: 4px;
-                        min-width: 18px;
-                        min-height: 18px;
-                        max-width: 18px;
-                        max-height: 18px;
-                    }
-                    QPushButton:hover {
-                        background: rgba(220, 53, 69, 0.2);
-                        color: #dc3545;
-                        border: 1px solid #dc3545;
-                    }
-                    QPushButton:pressed {
-                        background: rgba(220, 53, 69, 0.3);
-                        color: #dc3545;
-                    }
-                """)
+                if is_current_tab:
+                    # Selected tab in light mode - make button more visible
+                    close_button.setStyleSheet("""
+                        QPushButton {
+                            background: rgba(0, 0, 0, 0.15);
+                            border: 1px solid #8c959f;
+                            padding: 2px;
+                            margin: 0px;
+                            font-family: Arial, sans-serif;
+                            font-size: 16px;
+                            font-weight: bold;
+                            color: #656d76;
+                            border-radius: 4px;
+                            min-width: 18px;
+                            min-height: 18px;
+                            max-width: 18px;
+                            max-height: 18px;
+                        }
+                        QPushButton:hover {
+                            background: rgba(220, 53, 69, 0.2);
+                            color: #dc3545;
+                            border: 1px solid #dc3545;
+                        }
+                        QPushButton:pressed {
+                            background: rgba(220, 53, 69, 0.3);
+                            color: #dc3545;
+                        }
+                    """)
+                else:
+                    # Unselected tab in light mode
+                    close_button.setStyleSheet("""
+                        QPushButton {
+                            background: rgba(0, 0, 0, 0.1);
+                            border: 1px solid #d1d9e0;
+                            padding: 2px;
+                            margin: 0px;
+                            font-family: Arial, sans-serif;
+                            font-size: 16px;
+                            font-weight: bold;
+                            color: #24292f;
+                            border-radius: 4px;
+                            min-width: 18px;
+                            min-height: 18px;
+                            max-width: 18px;
+                            max-height: 18px;
+                        }
+                        QPushButton:hover {
+                            background: rgba(220, 53, 69, 0.2);
+                            color: #dc3545;
+                            border: 1px solid #dc3545;
+                        }
+                        QPushButton:pressed {
+                            background: rgba(220, 53, 69, 0.3);
+                            color: #dc3545;
+                        }
+                    """)
             else:
                 close_button.setStyleSheet("""
                     QPushButton {
