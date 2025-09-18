@@ -1048,6 +1048,9 @@ class MdfindApp(QMainWindow):
         
         # Set window properties for modern appearance
         self.setWindowFlags(self.windowFlags())
+        
+        # Setup custom titlebar theming
+        self.setup_custom_titlebar()
 
         # Define recognizable extensions before initializing extension emoji map
         self.image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",".heic"}
@@ -3209,6 +3212,12 @@ class MdfindApp(QMainWindow):
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
             }
+            QMainWindow::title {
+                background-color: #f6f8fa;
+                color: #24292f;
+                padding: 8px;
+                font-weight: 600;
+            }
             QWidget {
                 background-color: #ffffff;
                 color: #24292f;
@@ -3651,6 +3660,12 @@ class MdfindApp(QMainWindow):
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
             }
+            QMainWindow::title {
+                background-color: #2d2d30;
+                color: #d4d4d4;
+                padding: 8px;
+                font-weight: 600;
+            }
             QWidget {
                 background-color: #181818;
                 color: #d4d4d4;
@@ -4085,6 +4100,163 @@ class MdfindApp(QMainWindow):
         if hasattr(self, 'tab_widget'):
             self.update_tab_style()
 
+    def setup_custom_titlebar(self):
+        """Setup custom titlebar theming support"""
+        import sys
+        
+        # Enable custom titlebar on macOS
+        if sys.platform == "darwin":
+            self.setUnifiedTitleAndToolBarOnMac(True)
+        
+        # Set window attributes for better theming support
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        
+        # Enable dark mode detection and theming
+        if sys.platform == "win32":
+            try:
+                # Import Windows API for titlebar theming
+                import ctypes
+                from ctypes import wintypes, windll
+                
+                # Store the window handle for later use
+                self.hwnd = int(self.winId())
+                
+                # Enable DWM window attributes
+                windll.user32.SetWindowPos(
+                    self.hwnd, 0, 0, 0, 0, 0,
+                    0x0001 | 0x0002 | 0x0020  # SWP_NOSIZE | SWP_NOMOVE | SWP_FRAMECHANGED
+                )
+            except Exception as e:
+                print(f"Warning: Could not setup Windows titlebar theming: {e}")
+                self.hwnd = None
+
+    def update_titlebar_for_theme(self):
+        """Update system titlebar appearance based on current theme"""
+        import sys
+        
+        # Determine if current theme is dark or light
+        is_dark_theme = self.dark_mode
+        
+        try:
+            if sys.platform == "win32":
+                # Windows 10/11 native dark titlebar support
+                self.apply_windows_titlebar_theme(is_dark_theme)
+            elif sys.platform == "darwin":
+                # macOS native appearance support
+                self.apply_macos_titlebar_theme(is_dark_theme)
+            else:
+                # Linux/other platforms - use Qt styling
+                self.apply_qt_titlebar_theme()
+                
+        except Exception as e:
+            print(f"Warning: Could not apply titlebar theme: {e}")
+            # Fallback: update window title to show current theme
+            self.update_window_title_fallback()
+
+    def apply_windows_titlebar_theme(self, is_dark):
+        """Apply Windows 10/11 native titlebar theming"""
+        try:
+            import ctypes
+            from ctypes import wintypes, windll, byref, sizeof, c_bool, c_int
+            
+            hwnd = int(self.winId())
+            
+            # DWMWA_USE_IMMERSIVE_DARK_MODE (20) for Windows 11
+            # DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 (19) for older Windows 10
+            
+            # Try Windows 11 attribute first
+            success = False
+            try:
+                result = windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 20, byref(c_bool(is_dark)), sizeof(c_bool)
+                )
+                success = (result == 0)
+            except:
+                pass
+            
+            # If Windows 11 method failed, try older Windows 10 method
+            if not success:
+                try:
+                    windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, 19, byref(c_bool(is_dark)), sizeof(c_bool)
+                    )
+                except:
+                    pass
+            
+            # Also try to set the window caption color (Windows 11+)
+            try:
+                # Get theme colors
+                if is_dark:
+                    # Dark theme colors
+                    if self.theme_mode == 'tokyo_night':
+                        caption_color = 0x3b2824  # #24283b in BGR format
+                    elif self.theme_mode == 'tokyo_night_storm':
+                        caption_color = 0x3a2e2a  # #2a2e3a in BGR format
+                    elif self.theme_mode == 'chinolor_dark':
+                        caption_color = 0x3b3b3b  # #3b3b3b in BGR format
+                    else:
+                        caption_color = 0x302d2d  # #2d2d30 in BGR format (default dark)
+                else:
+                    # Light theme colors
+                    if self.theme_mode == 'chinolor_light':
+                        caption_color = 0xf2f4f5  # #f5f4f2 in BGR format
+                    else:
+                        caption_color = 0xfaf8f6  # #f6f8fa in BGR format (default light)
+                
+                # DWMWA_CAPTION_COLOR (35) - Windows 11 22H2+
+                windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 35, byref(wintypes.DWORD(caption_color)), sizeof(wintypes.DWORD)
+                )
+            except:
+                pass  # Caption color setting not supported on this Windows version
+                
+        except Exception as e:
+            print(f"Windows titlebar theming failed: {e}")
+
+    def apply_macos_titlebar_theme(self, is_dark):
+        """Apply macOS native titlebar theming"""
+        try:
+            # Use NSAppearance to set the titlebar theme
+            from PyQt6.QtCore import QTimer
+            
+            # Set the appearance through Qt's native interface
+            if is_dark:
+                # Request dark appearance
+                appearance_name = "NSAppearanceNameDarkAqua"
+            else:
+                # Request light appearance  
+                appearance_name = "NSAppearanceNameAqua"
+            
+            # Apply the appearance (this requires macOS-specific implementation)
+            # For now, we rely on the unified titlebar setting
+            self.setUnifiedTitleAndToolBarOnMac(True)
+            
+        except Exception as e:
+            print(f"macOS titlebar theming failed: {e}")
+
+    def apply_qt_titlebar_theme(self):
+        """Apply Qt-based titlebar theming for other platforms"""
+        # For Linux and other platforms, we can style the window frame
+        try:
+            # Set window properties that might affect the titlebar
+            if self.dark_mode:
+                self.setProperty("darkMode", True)
+            else:
+                self.setProperty("darkMode", False)
+            
+            # Force style update
+            self.style().unpolish(self)
+            self.style().polish(self)
+            
+        except Exception as e:
+            print(f"Qt titlebar theming failed: {e}")
+
+    def update_window_title_fallback(self):
+        """Fallback method: update window title to show current theme"""
+        base_title = "Everything by mdfind"
+        theme_display = self.theme_mode.replace('_', ' ').title()
+        self.setWindowTitle(f"{base_title} - {theme_display} Theme")
+
     def apply_current_theme(self):
         """Apply the currently selected theme"""
         if self.theme_mode == 'light':
@@ -4099,6 +4271,9 @@ class MdfindApp(QMainWindow):
             self.set_chinolor_dark_mode()
         elif self.theme_mode == 'chinolor_light':
             self.set_chinolor_light_mode()
+        
+        # Update titlebar to match the applied theme
+        self.update_titlebar_for_theme()
 
     def set_theme(self, theme_mode):
         """Set the theme mode and apply it"""
@@ -4130,6 +4305,12 @@ class MdfindApp(QMainWindow):
                 color: #c0caf5;
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
+            }
+            QMainWindow::title {
+                background-color: #24283b;
+                color: #c0caf5;
+                padding: 8px;
+                font-weight: 600;
             }
             QWidget {
                 background-color: #1a1b26;
@@ -4574,6 +4755,12 @@ class MdfindApp(QMainWindow):
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
             }
+            QMainWindow::title {
+                background-color: #2a2e3a;
+                color: #c0caf5;
+                padding: 8px;
+                font-weight: 600;
+            }
             QWidget {
                 background-color: #24283b;
                 color: #c0caf5;
@@ -5017,6 +5204,12 @@ class MdfindApp(QMainWindow):
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
             }
+            QMainWindow::title {
+                background-color: #3b3b3b;
+                color: #e4dfd7;
+                padding: 8px;
+                font-weight: 600;
+            }
             QWidget {
                 background-color: #2b2b2b;
                 color: #e4dfd7;
@@ -5459,6 +5652,12 @@ class MdfindApp(QMainWindow):
                 color: #2b312c;
                 font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
                 font-size: 13px;
+            }
+            QMainWindow::title {
+                background-color: #f5f4f2;
+                color: #2b312c;
+                padding: 8px;
+                font-weight: 600;
             }
             QWidget {
                 background-color: #faf9f7;
