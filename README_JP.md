@@ -94,7 +94,7 @@ macOSのSpotlight検索エンジンを活用した超高速ファイル検索ツ
 
 ## ライセンス
 
-[MITライセンス](LICENSE.md)のもとで公開
+[Apache License 2.0](LICENSE.md) のもとで公開
 
 ## 開発チーム
 

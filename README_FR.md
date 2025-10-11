@@ -97,7 +97,7 @@ Les contributions sont les bienvenues ! N'hésitez pas à soumettre des pull req
 
 ## Licence
 
-Ce projet est sous licence [MIT] - voir le fichier [LICENSE.md](LICENSE.md) pour plus de détails.
+Ce projet est sous licence Apache License 2.0 - voir le fichier [LICENSE.md](LICENSE.md) pour plus de détails.
 
 ## Auteur
 

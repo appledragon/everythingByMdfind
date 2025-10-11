@@ -97,7 +97,7 @@ Puede descargar la aplicación macOS lista para usar (.dmg) directamente desde l
 
 ## Licencia
 
-Este proyecto está licenciado bajo la Licencia [MIT] - consulte el archivo [LICENSE.md](LICENSE.md) para obtener más detalles.
+Este proyecto está licenciado bajo la Licencia Apache 2.0 - consulte el archivo [LICENSE.md](LICENSE.md) para obtener más detalles.
 
 ## Autor
 

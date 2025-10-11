@@ -94,7 +94,7 @@ macOS 스포트라이트 엔진 기반의 초고속 파일 검색 도구
 
 ## 라이선스
 
-[MIT 라이선스](LICENSE.md) 적용
+[Apache License 2.0](LICENSE.md) 적용
 
 ## 개발 팀
 

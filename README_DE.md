@@ -97,7 +97,7 @@ Beiträge sind willkommen! Bitte zögern Sie nicht, Pull Requests einzureichen o
 
 ## Lizenz
 
-Dieses Projekt ist unter der [MIT]-Lizenz lizenziert - siehe die Datei [LICENSE.md](LICENSE.md) für Details.
+Dieses Projekt ist unter der Apache License 2.0 lizenziert - siehe die Datei [LICENSE.md](LICENSE.md) für Details.
 
 ## Autor
 
