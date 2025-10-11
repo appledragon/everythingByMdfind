@@ -87,57 +87,9 @@ Ein leistungsstarkes und effizientes Dateisuch-Tool für macOS, das die native S
     python everything.py
     ```
 
-## Erstellen einer eigenständigen Anwendung (Optional)
+## Vorgefertigte Anwendung herunterladen
 
-Sie können py2app verwenden, um eine eigenständige macOS-Anwendung zu erstellen:
-
-1.  **py2app installieren:**
-
-    ```bash
-    pip install py2app
-    ```
-
-2.  **setup.py erstellen:**
-
-    ```bash
-    cat > setup.py << 'EOF'
-    from setuptools import setup
-
-    APP = ['everything.py']
-    DATA_FILES = [
-        ('', ['LICENSE.md', 'README.md']),
-    ]
-    OPTIONS = {
-        'argv_emulation': False,
-        'packages': ['PyQt6'],
-        'excludes': [],
-        'plist': {
-            'CFBundleName': 'Everything',
-            'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.6',
-            'CFBundleShortVersionString': '1.3.6',
-            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
-            'LSMinimumSystemVersion': '10.14',
-            'NSHighResolutionCapable': True,
-        }
-    }
-
-    setup(
-        app=APP,
-        data_files=DATA_FILES,
-        options={'py2app': OPTIONS},
-        setup_requires=['py2app'],
-    )
-    EOF
-    ```
-
-3.  **Anwendung erstellen:**
-
-    ```bash
-    python setup.py py2app
-    ```
-
-    Das macOS-App-Bundle wird sich im Verzeichnis `dist` befinden.
+Sie können die gebrauchsfertige macOS-Anwendung (.dmg) direkt von der [GitHub Releases](https://github.com/appledragon/everythingByMdfind/releases)-Seite herunterladen.
 
 ## Mitwirken
 

@@ -88,57 +88,9 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
     python everything.py
     ```
 
-## Building a Standalone Application (Optional)
+## Download Pre-built Application
 
-You can use py2app to create a standalone macOS application:
-
-1.  **Install py2app:**
-
-    ```bash
-    pip install py2app
-    ```
-
-2.  **Create setup.py:**
-
-    ```bash
-    cat > setup.py << 'EOF'
-    from setuptools import setup
-
-    APP = ['everything.py']
-    DATA_FILES = [
-        ('', ['LICENSE.md', 'README.md']),
-    ]
-    OPTIONS = {
-        'argv_emulation': False,
-        'packages': ['PyQt6'],
-        'excludes': [],
-        'plist': {
-            'CFBundleName': 'Everything',
-            'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.6',
-            'CFBundleShortVersionString': '1.3.6',
-            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
-            'LSMinimumSystemVersion': '10.14',
-            'NSHighResolutionCapable': True,
-        }
-    }
-
-    setup(
-        app=APP,
-        data_files=DATA_FILES,
-        options={'py2app': OPTIONS},
-        setup_requires=['py2app'],
-    )
-    EOF
-    ```
-
-3.  **Build the application:**
-
-    ```bash
-    python setup.py py2app
-    ```
-
-    The macOS app bundle will be located in the `dist` directory.
+You can download the ready-to-use macOS application (.dmg) directly from the [GitHub Releases](https://github.com/appledragon/everythingByMdfind/releases) page.
 
 ## Contributing
 

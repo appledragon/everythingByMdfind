@@ -84,63 +84,9 @@ macOSのSpotlight検索エンジンを活用した超高速ファイル検索ツ
     python everything.py
     ```
 
-## カスタマイズ
+## インストール版ダウンロード
 
-* **テーマ設定:** ビューメニューからダークモード切替
-* **検索履歴:** 
-  - 自動保存（入力補完対応）
-  - ヘルプメニューで履歴機能OFF可能
-* **プレビュー設定:**
-  - プレビュー表示/非表示切替
-  - 対応フォーマット: テキスト/画像/動画/アプリ
-
-## アプリ化（任意）
-
-py2appでmacOS用実行ファイル生成:
-
-1. **ツールインストール:**
-    ```bash
-    pip install py2app
-    ```
-
-2. **設定ファイル作成:**
-    ```bash
-    cat > setup.py << 'EOF'
-    from setuptools import setup
-
-    APP = ['everything.py']
-    DATA_FILES = [
-        ('', ['LICENSE.md', 'README.md']),
-    ]
-    OPTIONS = {
-        'argv_emulation': False,
-        'packages': ['PyQt6'],
-        'excludes': [],
-        'plist': {
-            'CFBundleName': 'Everything',
-            'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.6',
-            'CFBundleShortVersionString': '1.3.6',
-            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
-            'LSMinimumSystemVersion': '10.14',
-            'NSHighResolutionCapable': True,
-        }
-    }
-
-    setup(
-        app=APP,
-        data_files=DATA_FILES,
-        options={'py2app': OPTIONS},
-        setup_requires=['py2app'],
-    )
-    EOF
-    ```
-
-3. **ビルド:**
-    ```bash
-    python setup.py py2app
-    ```
-    `dist`フォルダにmacOSアプリが生成されます
+[GitHub Releases](https://github.com/appledragon/everythingByMdfind/releases) ページから、すぐに使える macOS アプリケーション（.dmg）を直接ダウンロードできます。
 
 ## 開発参加
 

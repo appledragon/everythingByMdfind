@@ -83,63 +83,9 @@
     python everything.py
     ```
 
-## 个性设置
+## 下载安装版
 
-* **深色模式：** 通过视图菜单切换暗色主题
-* **搜索历史：**
-  - 自动保存最近搜索记录（支持关键词补全）
-  - 可在帮助菜单关闭历史记录功能
-* **预览功能：**
-  - 内置预览面板（支持文本/图片/视频/应用程序）
-  - 通过视图菜单控制预览区显示
-
-## 打包独立版（可选）
-
-使用 py2app 生成 macOS 独立应用：
-
-1. **安装打包工具：**
-    ```bash
-    pip install py2app
-    ```
-
-2. **创建配置文件：**
-    ```bash
-    cat > setup.py << 'EOF'
-    from setuptools import setup
-
-    APP = ['everything.py']
-    DATA_FILES = [
-        ('', ['LICENSE.md', 'README.md']),
-    ]
-    OPTIONS = {
-        'argv_emulation': False,
-        'packages': ['PyQt6'],
-        'excludes': [],
-        'plist': {
-            'CFBundleName': 'Everything',
-            'CFBundleDisplayName': 'Everything',
-            'CFBundleVersion': '1.3.6',
-            'CFBundleShortVersionString': '1.3.6',
-            'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
-            'LSMinimumSystemVersion': '10.14',
-            'NSHighResolutionCapable': True,
-        }
-    }
-
-    setup(
-        app=APP,
-        data_files=DATA_FILES,
-        options={'py2app': OPTIONS},
-        setup_requires=['py2app'],
-    )
-    EOF
-    ```
-
-3. **生成应用：**
-    ```bash
-    python setup.py py2app
-    ```
-    生成的 macOS 应用包位于 `dist` 目录
+您可以直接从 [GitHub Releases](https://github.com/appledragon/everythingByMdfind/releases) 页面下载已打包好的 macOS 应用程序（.dmg 安装包）。
 
 ## 贡献代码
 
