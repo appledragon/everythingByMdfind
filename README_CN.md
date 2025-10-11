@@ -1,5 +1,5 @@
 # Everything by mdfind
-<img alt="everything" src="https://github.com/user-attachments/assets/84dc4f48-201f-40f5-8b2b-9f8f6070a9b2" />
+<img width="3836" height="2026" alt="image" src="https://github.com/user-attachments/assets/d86c3d6b-6fd4-4cfe-b64f-67c465bb3d3c" /><img width="3832" height="2024" alt="image" src="https://github.com/user-attachments/assets/a91d2b13-07ac-4cae-ab33-506f1fa3bca6" />
 
 一款基于 macOS 原生 Spotlight 引擎的极速文件搜索工具，毫秒级响应速度
 
