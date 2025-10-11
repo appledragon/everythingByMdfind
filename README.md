@@ -1,4 +1,4 @@
-[English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md)
+[English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md) | [Français](README_FR.md) | [Deutsch](README_DE.md) | [Español](README_ES.md)
 
 <img width="3836" height="2026" alt="image" src="https://github.com/user-attachments/assets/d86c3d6b-6fd4-4cfe-b64f-67c465bb3d3c" /><img width="3832" height="2024" alt="image" src="https://github.com/user-attachments/assets/a91d2b13-07ac-4cae-ab33-506f1fa3bca6" />
 
@@ -46,26 +46,22 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
     *   Independent search results and settings per tab
     *   Chrome-like tab experience with scroll buttons for many tabs
 *   **Customizable Interface:**
-    *   Toggle between light and dark mode
+    *   6 beautiful themes to choose from:
+        *   Light & Dark (system default)
+        *   Tokyo Night & Tokyo Night Storm
+        *   Chinolor Dark & Chinolor Light (Chinese traditional colors)
+    *   System title bar theming that matches your selected theme
     *   Show/hide preview panel
     *   Configurable search history
-*   **CSV Export:** Export search results to a CSV file for further analysis or record-keeping.
+*   **Multi-Format Export:** Export search results to multiple formats:
+    *   JSON - Structured data format
+    *   Excel (.xlsx) - Spreadsheet with formatting
+    *   HTML - Web-ready table format
+    *   Markdown - Documentation-friendly format
+    *   CSV - Classic comma-separated values
 *   **Lazy Loading:** Handles large result sets efficiently by loading items in batches as you scroll.
 *   **Drag & Drop:** Drag files directly to external applications.
 *   **Path Operations:** Copy file path, directory path, or filename to clipboard.
-
-## Usage
-
-1.  Enter your search query in the "Search Query" field.
-2.  Optionally, specify a directory to search within using the "Directory" field. Leave it empty to search everywhere.
-3.  Use the "Advanced Filters" to refine your search based on file size, extension, and matching options.
-4.  Click on the column headers ("Name", "Size", "Date Modified", "Path") to sort the results.
-5.  Toggle the Preview panel using the View menu to preview selected files.
-6.  Use Bookmarks menu to quickly search for specific file types like videos, audio, images, applications, etc.
-7.  Right-click on selected files to access the context menu with available actions.
-8.  Drag selected files from the search results into other apps supporting drag & drop.
-9.  For media files, use the integrated player controls or open in a standalone player window.
-10. Toggle dark mode from the View menu for a more comfortable experience in low-light environments.
 
 ## Installation
 
