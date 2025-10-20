@@ -755,10 +755,6 @@ class MediaPlayerManager:
         self.media_player.stop()
         self.current_media_path = None
     
-    def pause(self):
-        """Pause media playback"""
-        self.media_player.pause()
-    
     def toggle_play_pause(self):
         """Toggle between play and pause states"""
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -790,10 +786,6 @@ class MediaPlayerManager:
         self.audio_output.setMuted(not current_mute)
         return not current_mute
     
-    def is_muted(self):
-        """Check if audio is muted"""
-        return self.audio_output.isMuted()
-    
     def get_volume(self):
         """Get current volume as percentage (0-100)"""
         return int(self.audio_output.volume() * 100)
@@ -810,20 +802,6 @@ class MediaPlayerManager:
         self.slider_dragging = False
         if self.was_playing:
             self.media_player.play()
-    
-    def is_audio_file(self, path):
-        """Check if file is an audio file based on extension"""
-        _, ext = os.path.splitext(path)
-        return ext.lower() in self.audio_extensions
-    
-    def is_video_file(self, path):
-        """Check if file is a video file based on extension"""
-        _, ext = os.path.splitext(path)
-        return ext.lower() in self.video_extensions
-    
-    def is_media_file(self, path):
-        """Check if file is either audio or video"""
-        return self.is_audio_file(path) or self.is_video_file(path)
     
     def connect_signals(self, position_callback, duration_callback, state_callback):
         """Connect signal handlers for the media player"""
@@ -940,9 +918,7 @@ class StandalonePlayerWindow(QMainWindow):
         self.dark_mode = enabled
         filename = os.path.basename(self.current_media_path) if self.current_media_path else ""
         if filename:
-            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                                    f"<div style='font-size: 24pt; color: {'white' if enabled else 'black'};'>"
-                                    f"{filename}</div></div>")
+            self.set_audio_label_text(filename, not enabled)
         
     def play_media(self, path, is_video=True):
         """Play a media file"""
@@ -956,9 +932,7 @@ class StandalonePlayerWindow(QMainWindow):
             self.video_widget.setVisible(False)
             self.audio_label.setVisible(True)
             filename = os.path.basename(path)
-            self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                                    f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>"
-                                    f"{filename}</div></div>")
+            self.set_audio_label_text(filename, self.dark_mode)
         
         # Use the player manager to play the media
         self.player_manager.play_media(path)
@@ -1003,19 +977,18 @@ class StandalonePlayerWindow(QMainWindow):
                 # Signal to the main app that we need to play the next media
                 self.parent().play_next_in_standalone()
     
+    def set_audio_label_text(self, filename, is_dark=False):
+        """Set audio label text with consistent styling"""
+        color = 'white' if is_dark else 'black'
+        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                f"<div style='font-size: 24pt; color: {color};'>{filename}</div>"
+                                f"</div>")
+    
     def closeEvent(self, event):
         # Signal the parent to restore the embedded player
         self.parent().restore_embedded_player()
         event.accept()
         
-    def get_current_position(self):
-        """Get the current position of the media player"""
-        return self.player_manager.get_position()
-    
-    def get_playback_state(self):
-        """Get the current playback state (playing/paused)"""
-        return self.player_manager.media_player.playbackState()
-    
     def eventFilter(self, obj, event):
         if event.type() == event.Type.MouseButtonPress and (obj == self.video_widget or obj == self.audio_label):
             if event.button() == Qt.MouseButton.LeftButton:
@@ -1915,14 +1888,19 @@ class MdfindApp(QMainWindow):
         
         # Set audio label text
         filename = os.path.basename(path)
-        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                                f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
-                                f"</div>")
+        self.set_audio_label_display(filename)
         
         # Play the media
         self.player_manager.play_media(path)
         self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPause))
         self.preview_stack.setCurrentIndex(2)
+    
+    def set_audio_label_display(self, filename):
+        """Set audio label display with consistent styling"""
+        color = 'white' if self.dark_mode else 'black'
+        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
+                                f"<div style='font-size: 24pt; color: {color};'>{filename}</div>"
+                                f"</div>")
         
     def display_text_preview(self, path):
         """Handle display of text files"""
@@ -6112,9 +6090,7 @@ class MdfindApp(QMainWindow):
             current_path = self.media_player.source().toLocalFile()
             if current_path:
                 filename = os.path.basename(current_path)
-                self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                        f"<div style='font-size: 24pt; color: {'white' if checked else 'black'};'>{filename}</div>"
-                        f"</div>")
+                self.set_audio_label_display(filename)
 
         cfg = read_config()
         cfg["dark_mode"] = checked
@@ -6405,9 +6381,7 @@ class MdfindApp(QMainWindow):
                         self.video_widget.setVisible(False)
                         self.audio_label.setVisible(True)
                         filename = os.path.basename(path)
-                        self.audio_label.setText(f"<div style='padding: 20px; border-radius: 10px;'>"
-                                               f"<div style='font-size: 24pt; color: {'white' if self.dark_mode else 'black'};'>{filename}</div>"
-                                               f"</div>")
+                        self.set_audio_label_display(filename)
                     
                     # Load and play the media
                     self.media_player.setSource(QUrl.fromLocalFile(path))
