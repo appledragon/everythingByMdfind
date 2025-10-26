@@ -584,7 +584,7 @@ def format_size(size):
 # Class to manage individual search tabs
 class SearchTab:
     """Manages the data and widgets for a single search tab"""
-    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions=""):
+    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions="", slow_mode=False):
         # Search parameters
         self.query = query
         self.directory = directory
@@ -594,6 +594,7 @@ class SearchTab:
         self.min_size = min_size
         self.max_size = max_size
         self.extensions = extensions
+        self.slow_mode = slow_mode
         
         # Search results data
         self.all_file_data = []
@@ -624,13 +625,13 @@ class SearchTab:
 # Thread class to run mdfind in the background.
 # Reads results line by line based on search parameters and sends them to the main thread.
 class SearchWorker(QThread):
-    """Thread class to run mdfind in the background.
+    """Thread class to run mdfind or find in the background.
     Reads results line by line based on search parameters and sends them to the main thread."""
     progress_signal = pyqtSignal(int)
     result_signal = pyqtSignal(list)
     error_signal = pyqtSignal(str)
     
-    def __init__(self, query, directory, search_by_file_name, match_case, full_match, extra_clause=None, is_bookmark=False):
+    def __init__(self, query, directory, search_by_file_name, match_case, full_match, extra_clause=None, is_bookmark=False, slow_mode=False):
         super().__init__()
         self.query = query
         self.directory = directory
@@ -639,43 +640,69 @@ class SearchWorker(QThread):
         self.full_match = full_match
         self.extra_clause = extra_clause
         self.is_bookmark = is_bookmark
+        self.slow_mode = slow_mode
         self._is_running = True
         self.process = None
 
     def run(self):
         files_info = []
         idx = 0
-        cmd = ["mdfind"]
-
-        # If it's a bookmark search, use only the extra clause
-        if self.is_bookmark and self.extra_clause is not None:
-            query_str = self.extra_clause
-        else:
-            # Normal search behavior as before
-            full_match_str = "" if self.full_match else "*"
-            case_modifier = "" if self.match_case else "cd"
-            if self.search_by_file_name:
-                query_str = f'kMDItemFSName == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
-                if self.extra_clause is not None:
-                    query_str += f" && {self.extra_clause}"
+        
+        if self.slow_mode:
+            # Use find command for slow mode
+            cmd = ["find"]
+            
+            # Add directory to search
+            if self.directory:
+                dir_expanded = os.path.expanduser(self.directory)
+                cmd.append(dir_expanded)
             else:
-                if self.query != "":
-                    query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+                cmd.append(".")
+            
+            # Add name pattern if searching by file name
+            if self.search_by_file_name and self.query:
+                if self.match_case:
+                    cmd.extend(["-name"])
+                else:
+                    cmd.extend(["-iname"])
+                
+                if self.full_match:
+                    cmd.append(self.query)
+                else:
+                    cmd.append(f"*{self.query}*")
+        else:
+            # Use mdfind command (original behavior)
+            cmd = ["mdfind"]
+
+            # If it's a bookmark search, use only the extra clause
+            if self.is_bookmark and self.extra_clause is not None:
+                query_str = self.extra_clause
+            else:
+                # Normal search behavior as before
+                full_match_str = "" if self.full_match else "*"
+                case_modifier = "" if self.match_case else "cd"
+                if self.search_by_file_name:
+                    query_str = f'kMDItemFSName == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
                     if self.extra_clause is not None:
                         query_str += f" && {self.extra_clause}"
                 else:
-                    if self.extra_clause is not None:
-                        query_str = self.extra_clause
+                    if self.query != "":
+                        query_str = f'kMDItemTextContent == "{full_match_str}{self.query}{full_match_str}"{case_modifier}'
+                        if self.extra_clause is not None:
+                            query_str += f" && {self.extra_clause}"
                     else:
-                        return
-                    
-        cmd.append(query_str)
+                        if self.extra_clause is not None:
+                            query_str = self.extra_clause
+                        else:
+                            return
+                        
+            cmd.append(query_str)
 
-        if self.directory:
-            dir_expanded = os.path.expanduser(self.directory)
-            cmd.extend(["-onlyin", dir_expanded])
+            if self.directory:
+                dir_expanded = os.path.expanduser(self.directory)
+                cmd.extend(["-onlyin", dir_expanded])
 
-        # print(f"Running mdfind with query: {cmd}")
+        # print(f"Running {'find' if self.slow_mode else 'mdfind'} with query: {cmd}")
         try:
             self.process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         except Exception as e:
@@ -1207,6 +1234,8 @@ class MdfindApp(QMainWindow):
         self.chk_file_name.setToolTip("When unchecked: Search in file content and metadata")
         self.chk_match_case = QCheckBox("🔤 Match Case")
         self.chk_full_match = QCheckBox("🎯 Full Match")
+        self.chk_slow_mode = QCheckBox("🐌 Slow Mode")
+        self.chk_slow_mode.setToolTip("Use find command instead of mdfind for broader compatibility")
 
         adv_layout.addWidget(lbl_min_size, 2)
         adv_layout.addWidget(self.edit_min_size, 5)
@@ -1217,6 +1246,7 @@ class MdfindApp(QMainWindow):
         adv_layout.addWidget(self.chk_file_name, 2)
         adv_layout.addWidget(self.chk_match_case, 2)
         adv_layout.addWidget(self.chk_full_match, 2)
+        adv_layout.addWidget(self.chk_slow_mode, 2)
 
         group_advanced.setLayout(adv_layout)
         left_layout.addWidget(group_advanced)
@@ -1451,6 +1481,7 @@ class MdfindApp(QMainWindow):
         self.chk_file_name.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
         self.chk_match_case.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
         self.chk_full_match.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
+        self.chk_slow_mode.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
         self.edit_min_size.textChanged.connect(self.on_filter_changed)
         self.edit_max_size.textChanged.connect(self.on_filter_changed)
         self.edit_extension.textChanged.connect(self.on_filter_changed)
@@ -1545,7 +1576,8 @@ class MdfindApp(QMainWindow):
             full_match=self.chk_full_match.isChecked(),
             min_size=self.edit_min_size.text().strip(),
             max_size=self.edit_max_size.text().strip(),
-            extensions=self.edit_extension.text().strip()
+            extensions=self.edit_extension.text().strip(),
+            slow_mode=self.chk_slow_mode.isChecked()
         )
         
         # Apply default sort settings
@@ -1636,6 +1668,7 @@ class MdfindApp(QMainWindow):
                 self.chk_file_name.blockSignals(True)
                 self.chk_match_case.blockSignals(True)
                 self.chk_full_match.blockSignals(True)
+                self.chk_slow_mode.blockSignals(True)
                 self.edit_min_size.blockSignals(True)
                 self.edit_max_size.blockSignals(True)
                 self.edit_extension.blockSignals(True)
@@ -1651,6 +1684,7 @@ class MdfindApp(QMainWindow):
                     self.chk_file_name.setChecked(current_tab.file_name_search)
                     self.chk_match_case.setChecked(current_tab.match_case)
                     self.chk_full_match.setChecked(current_tab.full_match)
+                    self.chk_slow_mode.setChecked(current_tab.slow_mode)
                     
                     # Update the filter fields with the tab's filter parameters
                     self.edit_min_size.setText(current_tab.min_size)
@@ -1666,6 +1700,7 @@ class MdfindApp(QMainWindow):
                     self.chk_file_name.blockSignals(False)
                     self.chk_match_case.blockSignals(False)
                     self.chk_full_match.blockSignals(False)
+                    self.chk_slow_mode.blockSignals(False)
                     self.edit_min_size.blockSignals(False)
                     self.edit_max_size.blockSignals(False)
                     self.edit_extension.blockSignals(False)
@@ -2049,8 +2084,22 @@ class MdfindApp(QMainWindow):
         if not is_bookmark and not query and extra_clause is None:
             return
 
-        # Create a new tab for this search
-        search_tab = self.create_new_tab(query, directory, tab_title)
+        # Get current tab or create a new one
+        current_tab = self.get_current_tab()
+        
+        # Check if we should reuse current tab or create new one
+        # Reuse if tab exists and query matches (user just changed options like slow mode)
+        if current_tab and current_tab.query == query and current_tab.directory == directory:
+            # Reuse current tab for this search
+            search_tab = current_tab
+            # Update search parameters
+            search_tab.file_name_search = self.chk_file_name.isChecked()
+            search_tab.match_case = self.chk_match_case.isChecked()
+            search_tab.full_match = self.chk_full_match.isChecked()
+            search_tab.slow_mode = self.chk_slow_mode.isChecked()
+        else:
+            # Create a new tab for this search
+            search_tab = self.create_new_tab(query, directory, tab_title)
         
         # Stop any existing search in this tab
         if search_tab.search_worker is not None and search_tab.search_worker.isRunning():
@@ -2064,7 +2113,8 @@ class MdfindApp(QMainWindow):
             self.chk_match_case.isChecked(),
             self.chk_full_match.isChecked(),
             extra_clause,  # Pass extra clause if provided
-            is_bookmark    # Pass the bookmark flag
+            is_bookmark,   # Pass the bookmark flag
+            self.chk_slow_mode.isChecked()  # Pass slow mode flag
         )
         search_tab.search_worker.progress_signal.connect(self.update_progress)
         search_tab.search_worker.result_signal.connect(lambda results: self.update_tree(results, search_tab))
@@ -2104,6 +2154,7 @@ class MdfindApp(QMainWindow):
         file_name_search = current_tab.file_name_search
         match_case = current_tab.match_case
         full_match = current_tab.full_match
+        slow_mode = current_tab.slow_mode
         
         # Stop any existing search in this tab
         if current_tab.search_worker is not None and current_tab.search_worker.isRunning():
@@ -2117,7 +2168,8 @@ class MdfindApp(QMainWindow):
             match_case,
             full_match,
             None,  # No extra clause for refresh
-            False  # Not a bookmark search
+            False, # Not a bookmark search
+            slow_mode  # Use the tab's slow mode setting
         )
         current_tab.search_worker.progress_signal.connect(self.update_progress)
         current_tab.search_worker.result_signal.connect(lambda results: self.update_tree(results, current_tab))
