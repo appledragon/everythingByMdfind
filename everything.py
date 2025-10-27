@@ -220,7 +220,7 @@ class ExportFormatDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("🚀 Export Format Selection")
         self.setModal(True)
-        self.setFixedSize(520, 480)  # 进一步增加尺寸以防止文字截断
+        self.setFixedSize(520, 480)  # increase size to prevent text truncation
         
         # Apply current theme styling
         if hasattr(parent, 'dark_mode') and parent.dark_mode:
@@ -313,9 +313,9 @@ class ExportFormatDialog(QDialog):
             """)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 25, 20, 20)  # 增加顶部边距以确保标题显示完整
-        layout.setSpacing(8)  # 设置合适的间距
-        
+        layout.setContentsMargins(20, 25, 20, 20)  # increase top margin to ensure title is fully visible
+        layout.setSpacing(8)  # set appropriate spacing
+
         # Title
         title = QLabel("📤 Choose Export Format")
         title.setStyleSheet("""
@@ -326,8 +326,8 @@ class ExportFormatDialog(QDialog):
             min-height: 35px;
             max-height: 50px;
         """)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)  # 居中对齐
-        title.setWordWrap(True)  # 允许换行以防止截断
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)  
+        title.setWordWrap(True)
         layout.addWidget(title)
         
         # Format options
@@ -341,10 +341,10 @@ class ExportFormatDialog(QDialog):
         
         json_desc = QLabel("    → Best for data processing, APIs, and modern applications")
         json_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        json_desc.setWordWrap(True)  # 允许换行
+        json_desc.setWordWrap(True)
         layout.addWidget(json_desc)
         
-        layout.addSpacing(5)  # 添加间距
+        layout.addSpacing(5) 
         
         # Excel format
         excel_radio = QRadioButton("📊 Excel - Spreadsheet with styling")
@@ -354,11 +354,11 @@ class ExportFormatDialog(QDialog):
         
         excel_desc = QLabel("    → Perfect for data analysis, charts, and business reports")
         excel_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        excel_desc.setWordWrap(True)  # 允许换行
+        excel_desc.setWordWrap(True)
         layout.addWidget(excel_desc)
-        
-        layout.addSpacing(5)  # 添加间距
-        
+
+        layout.addSpacing(5) 
+
         # HTML format
         html_radio = QRadioButton("🌐 HTML - Interactive web page")
         html_radio.setToolTip("Export as styled HTML page with search and filtering")
@@ -367,11 +367,11 @@ class ExportFormatDialog(QDialog):
         
         html_desc = QLabel("    → Great for sharing, presentations, and web viewing")
         html_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        html_desc.setWordWrap(True)  # 允许换行
+        html_desc.setWordWrap(True)
         layout.addWidget(html_desc)
-        
-        layout.addSpacing(5)  # 添加间距
-        
+
+        layout.addSpacing(5) 
+
         # Markdown format
         md_radio = QRadioButton("📝 Markdown - Documentation format")
         md_radio.setToolTip("Export as Markdown for GitHub, documentation sites")
@@ -380,11 +380,11 @@ class ExportFormatDialog(QDialog):
         
         md_desc = QLabel("    → Ideal for GitHub, wikis, and documentation")
         md_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        md_desc.setWordWrap(True)  # 允许换行
+        md_desc.setWordWrap(True)
         layout.addWidget(md_desc)
-        
-        layout.addSpacing(5)  # 添加间距
-        
+
+        layout.addSpacing(5) 
+
         # CSV format (legacy)
         csv_radio = QRadioButton("📋 CSV - Legacy spreadsheet format")
         csv_radio.setToolTip("Export as simple CSV for basic compatibility")
@@ -393,7 +393,7 @@ class ExportFormatDialog(QDialog):
         
         csv_desc = QLabel("    → Simple format for basic spreadsheet applications")
         csv_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        csv_desc.setWordWrap(True)  # 允许换行
+        csv_desc.setWordWrap(True)
         layout.addWidget(csv_desc)
         
         # Set JSON as default
