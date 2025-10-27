@@ -1202,11 +1202,11 @@ class MdfindApp(QMainWindow):
         self.edit_extension = QLineEdit()
         self.edit_extension.setPlaceholderText("pdf;docx;xls")
 
-        self.chk_file_name = QCheckBox("📝 Search by File Name")
+        self.chk_file_name = QCheckBox("Search by File Name")
         self.chk_file_name.setChecked(True)
         self.chk_file_name.setToolTip("When unchecked: Search in file content and metadata")
-        self.chk_match_case = QCheckBox("🔤 Match Case")
-        self.chk_full_match = QCheckBox("🎯 Full Match")
+        self.chk_match_case = QCheckBox("Match Case")
+        self.chk_full_match = QCheckBox("Full Match")
 
         adv_layout.addWidget(lbl_min_size, 2)
         adv_layout.addWidget(self.edit_min_size, 5)
@@ -1214,9 +1214,9 @@ class MdfindApp(QMainWindow):
         adv_layout.addWidget(self.edit_max_size, 5)
         adv_layout.addWidget(lbl_extension, 2)
         adv_layout.addWidget(self.edit_extension, 5)
-        adv_layout.addWidget(self.chk_file_name, 2)
-        adv_layout.addWidget(self.chk_match_case, 2)
-        adv_layout.addWidget(self.chk_full_match, 2)
+        adv_layout.addWidget(self.chk_file_name, 4)
+        adv_layout.addWidget(self.chk_match_case, 3)
+        adv_layout.addWidget(self.chk_full_match, 3)
 
         group_advanced.setLayout(adv_layout)
         left_layout.addWidget(group_advanced)
