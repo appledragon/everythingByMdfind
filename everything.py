@@ -1284,20 +1284,21 @@ class MdfindApp(QMainWindow):
         header_layout.addWidget(preview_title)
         header_layout.addStretch()
         
-        # Add a pop-out button
-        popout_button = QPushButton("🔲")  # Square symbol for pop-out
-        popout_button.setFixedSize(24, 24)
+        # Add a pop-out button with descriptive label for consistency
+        popout_button = QPushButton("🔲 Pop-out")
+        popout_button.setMinimumWidth(110)
+        popout_button.setCursor(Qt.CursorShape.PointingHandCursor)
         popout_button.setToolTip("Open in standalone player")
         popout_button.clicked.connect(self.open_standalone_player)
-        popout_button.setObjectName("previewPopoutButton")
         popout_button.setObjectName("previewPopoutButton")
         
         # Add the popout button to the header
         header_layout.addWidget(popout_button)
         
         # Add a more stylish close button to the header
-        close_button = QPushButton("✕")  # Using Unicode "Heavy Multiplication X" character
-        close_button.setFixedSize(24, 24)  # Keep the square size
+        close_button = QPushButton("✖ Close")
+        close_button.setMinimumWidth(110)
+        close_button.setCursor(Qt.CursorShape.PointingHandCursor)
         close_button.setToolTip("Close preview panel")
         close_button.clicked.connect(self.close_preview)
         
@@ -3541,36 +3542,44 @@ class MdfindApp(QMainWindow):
                 font-size: 12px;
             }
             #previewPopoutButton {
-                background-color: rgba(0, 0, 0, 0.05);
-                border: 1px solid #d1d9e0;
-                border-radius: 4px;
-                color: #24292f;
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #0d74ce, stop: 1 #0a58ad);
+                border: 1px solid #0a58ad;
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }
             #previewPopoutButton:hover {
-                background-color: #0969da;
-                border-color: #0969da;
-                color: white;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #0f7ee0, stop: 1 #0c63b5);
+                border-color: #0c63b5;
             }
             #previewPopoutButton:pressed {
-                background-color: #0550ae;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #0a58ad, stop: 1 #083f85);
             }
             #previewCloseButton {
-                background-color: rgba(0, 0, 0, 0.05);
-                border: 1px solid #d1d9e0;
-                border-radius: 4px;
-                color: #24292f;
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #e24d5a, stop: 1 #b92f3c);
+                border: 1px solid #b92f3c;
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }
             #previewCloseButton:hover {
-                background-color: #d73a49;
-                border-color: #d73a49;
-                color: white;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #f0606d, stop: 1 #cf3b48);
+                border-color: #cf3b48;
             }
             #previewCloseButton:pressed {
-                background-color: #b31d28;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #b92f3c, stop: 1 #8f212c);
             }
             QTabWidget::pane {
                 border: 1px solid #cccccc;
@@ -3989,36 +3998,44 @@ class MdfindApp(QMainWindow):
                 font-size: 12px;
             }
             #previewPopoutButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid #404040;
-                border-radius: 4px;
-                color: #d4d4d4;
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #1e7ed8, stop: 1 #155da3);
+                border: 1px solid #155da3;
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }
             #previewPopoutButton:hover {
-                background-color: #007fd4;
-                border-color: #007fd4;
-                color: white;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #2791f0, stop: 1 #1a6ebb);
+                border-color: #1a6ebb;
             }
             #previewPopoutButton:pressed {
-                background-color: #005a9e;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #155da3, stop: 1 #0e4176);
             }
             #previewCloseButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid #404040;
-                border-radius: 4px;
-                color: #d4d4d4;
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #d3414f, stop: 1 #9b2a35);
+                border: 1px solid #9b2a35;
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }
             #previewCloseButton:hover {
-                background-color: #e81123;
-                border-color: #e81123;
-                color: white;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #e45563, stop: 1 #b43441);
+                border-color: #b43441;
             }
             #previewCloseButton:pressed {
-                background-color: #c50e1f;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #9b2a35, stop: 1 #701d25);
             }
             QTabWidget::pane {
                 border: 1px solid #555555;
@@ -4635,36 +4652,44 @@ class MdfindApp(QMainWindow):
                 font-size: 12px;
             }}
             #previewPopoutButton {{
-                background-color: rgba({colors['accent_rgba']});
-                border: 1px solid {colors['border']};
-                border-radius: 4px;
-                color: {colors['fg_main']};
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['accent_hover']}, stop: 1 {colors['accent']});
+                border: 1px solid {colors['accent']};
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }}
             #previewPopoutButton:hover {{
-                background-color: {colors['accent']};
-                border-color: {colors['accent']};
-                color: white;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['accent_hover']}, stop: 1 {colors['accent_hover']});
+                border-color: {colors['accent_hover']};
             }}
             #previewPopoutButton:pressed {{
-                background-color: {colors['accent_pressed']};
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['accent_pressed']}, stop: 1 {colors['accent']});
             }}
             #previewCloseButton {{
-                background-color: rgba({colors['close_rgba']});
-                border: 1px solid {colors['border']};
-                border-radius: 4px;
-                color: {colors['fg_main']};
-                font-size: 14px;
-                font-weight: bold;
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['close_color']}, stop: 1 {colors['close_pressed']});
+                border: 1px solid {colors['close_pressed']};
+                border-radius: 6px;
+                color: white;
+                font-size: 13px;
+                font-weight: 600;
+                padding: 8px 18px;
+                min-height: 26px;
             }}
             #previewCloseButton:hover {{
-                background-color: {colors['close_color']};
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['close_color']}, stop: 1 {colors['close_color']});
                 border-color: {colors['close_color']};
-                color: white;
             }}
             #previewCloseButton:pressed {{
-                background-color: {colors['close_pressed']};
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 {colors['close_pressed']}, stop: 1 {colors['close_pressed']});
             }}
             QTabWidget::pane {{
                 border: 1px solid {colors['border']};
