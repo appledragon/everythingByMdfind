@@ -1615,25 +1615,22 @@ class MdfindApp(QMainWindow):
         except (RuntimeError, TypeError):
             pass  # Ignore if already disconnected
         
-        # Remove the tab from the dictionary first
-        del self.search_tabs[index]
-        
         # Remove tab from widget
         self.tab_widget.removeTab(index)
         
         # Efficiently rebuild the tab dictionary - all tabs after the closed one shift down by 1
-        # Only rebuild if there are tabs after the closed one
-        if index < self.tab_widget.count():
-            # Create new dictionary with shifted indices
-            new_tabs = {}
-            for old_idx, tab_obj in self.search_tabs.items():
-                if old_idx < index:
-                    # Tabs before the closed one keep their index
-                    new_tabs[old_idx] = tab_obj
-                else:
-                    # Tabs after the closed one shift down by 1
-                    new_tabs[old_idx - 1] = tab_obj
-            self.search_tabs = new_tabs
+        # Create new dictionary with shifted indices (before deleting from old dict)
+        new_tabs = {}
+        for old_idx, tab_obj in self.search_tabs.items():
+            if old_idx < index:
+                # Tabs before the closed one keep their index
+                new_tabs[old_idx] = tab_obj
+            elif old_idx > index:
+                # Tabs after the closed one shift down by 1
+                new_tabs[old_idx - 1] = tab_obj
+            # Skip the tab at 'index' (don't add it to new_tabs)
+        
+        self.search_tabs = new_tabs
         
         # Update tab widths after closing
         if self.tab_widget.count() > 0:
@@ -1808,11 +1805,11 @@ class MdfindApp(QMainWindow):
         # Display basic file info in the bottom pane
         self.display_file_info(path)
 
-        # Check file extension for preview type - cache extension sets for faster lookup
+        # Check file extension for preview type - extension sets are already
+        # cached as instance variables for O(1) lookup performance
         _, ext = os.path.splitext(path)
         ext = ext.lower()
 
-        # Use cached sets for O(1) lookup instead of repeated attribute access
         if ext in self.image_extensions or ext == ".svg":
             self.display_image_preview(path, ext)
         elif ext in self.video_extensions:
@@ -1921,18 +1918,23 @@ class MdfindApp(QMainWindow):
     def display_text_preview(self, path):
         """Handle display of text files"""
         try:
-            # Read file once and detect encoding
+            # Read up to 4KB for preview
+            preview_size = 4096
             with open(path, 'rb') as f:
-                chunk = f.read(4096)  # Read more data at once
+                chunk = f.read(preview_size)
             
             # Try to decode as UTF-8
             try:
                 content = chunk.decode('utf-8')
-                # If successful, read the rest if needed (first 4KB should be enough for preview)
             except UnicodeDecodeError:
                 # Fall back to reading with error replacement
                 with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                    content = f.read(4096)
+                    content = f.read(preview_size)
+            
+            # Check if file is larger than what we read
+            file_size = os.path.getsize(path)
+            if file_size > preview_size:
+                content += f"\n\n... [Showing first {preview_size} bytes of {file_size} byte file]"
             
             self.text_preview.setPlainText(content)
             self.preview_stack.setCurrentIndex(0)
