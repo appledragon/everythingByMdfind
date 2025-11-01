@@ -43,15 +43,16 @@ def read_config():
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except (IOError, json.JSONDecodeError) as e:
+        print(f"Warning: Could not read config file: {e}")
         return {}
 
 def write_config(data):
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-    except:
-        pass
+    except (IOError, OSError) as e:
+        print(f"Warning: Could not write config file: {e}")
 
 
 # Beautiful ToolTip class for showing confirmation messages
@@ -1588,42 +1589,48 @@ class MdfindApp(QMainWindow):
     
     def close_tab(self, index):
         """Close a search tab"""
-        if index in self.search_tabs:
-            # Stop any running search
-            tab = self.search_tabs[index]
-            if tab.search_worker and tab.search_worker.isRunning():
-                tab.search_worker.stop()
-                tab.search_worker.wait()
+        if index not in self.search_tabs:
+            return
             
-            # Disconnect tree signals to prevent crashes
-            try:
-                tab.tree.itemSelectionChanged.disconnect()
-                tab.tree.customContextMenuRequested.disconnect()
-                tab.tree.itemDoubleClicked.disconnect()
-                tab.tree.header().sectionClicked.disconnect()
-                tab.tree.verticalScrollBar().valueChanged.disconnect()
-            except:
-                pass  # Ignore if already disconnected
-            
-            # Remove tab
-            del self.search_tabs[index]
-            self.tab_widget.removeTab(index)
-            
-            # Update indices for remaining tabs
+        # Stop any running search
+        tab = self.search_tabs[index]
+        if tab.search_worker and tab.search_worker.isRunning():
+            tab.search_worker.stop()
+            tab.search_worker.wait()
+        
+        # Disconnect tree signals to prevent crashes
+        try:
+            tab.tree.itemSelectionChanged.disconnect()
+            tab.tree.customContextMenuRequested.disconnect()
+            tab.tree.itemDoubleClicked.disconnect()
+            tab.tree.header().sectionClicked.disconnect()
+            tab.tree.verticalScrollBar().valueChanged.disconnect()
+        except (RuntimeError, TypeError):
+            pass  # Ignore if already disconnected
+        
+        # Remove the tab from the dictionary first
+        del self.search_tabs[index]
+        
+        # Remove tab from widget
+        self.tab_widget.removeTab(index)
+        
+        # Efficiently rebuild the tab dictionary - all tabs after the closed one shift down by 1
+        # Only rebuild if there are tabs after the closed one
+        if index < self.tab_widget.count():
+            # Create new dictionary with shifted indices
             new_tabs = {}
-            for i in range(self.tab_widget.count()):
-                old_index = None
-                for old_i, tab in self.search_tabs.items():
-                    if self.tab_widget.widget(i) == tab.tree:
-                        old_index = old_i
-                        break
-                if old_index is not None:
-                    new_tabs[i] = self.search_tabs[old_index]
+            for old_idx, tab_obj in self.search_tabs.items():
+                if old_idx < index:
+                    # Tabs before the closed one keep their index
+                    new_tabs[old_idx] = tab_obj
+                else:
+                    # Tabs after the closed one shift down by 1
+                    new_tabs[old_idx - 1] = tab_obj
             self.search_tabs = new_tabs
-            
-            # Update tab widths after closing
-            if self.tab_widget.count() > 0:
-                self.update_tab_style()
+        
+        # Update tab widths after closing
+        if self.tab_widget.count() > 0:
+            self.update_tab_style()
     
     def on_tab_changed(self, index):
         """Handle tab change event"""
@@ -1906,15 +1913,23 @@ class MdfindApp(QMainWindow):
     def display_text_preview(self, path):
         """Handle display of text files"""
         try:
+            # Read file once and detect encoding
             with open(path, 'rb') as f:
-                chunk = f.read(512)
-            chunk.decode('utf-8')
-            with open(path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read(4096)
+                chunk = f.read(4096)  # Read more data at once
+            
+            # Try to decode as UTF-8
+            try:
+                content = chunk.decode('utf-8')
+                # If successful, read the rest if needed (first 4KB should be enough for preview)
+            except UnicodeDecodeError:
+                # Fall back to reading with error replacement
+                with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read(4096)
+            
             self.text_preview.setPlainText(content)
             self.preview_stack.setCurrentIndex(0)
-        except:
-            self.text_preview.setPlainText("No preview available.")
+        except (IOError, OSError) as e:
+            self.text_preview.setPlainText(f"No preview available: {str(e)}")
             self.preview_stack.setCurrentIndex(0)
 
     # === Video Player Control Methods ===
@@ -2018,6 +2033,14 @@ class MdfindApp(QMainWindow):
         end_idx = min(search_tab.current_loaded + self.batch_size, len(search_tab.file_data))
         items_to_load = search_tab.file_data[search_tab.current_loaded:end_idx]
         
+        # Cache the default emoji and extension map for faster lookups
+        default_emoji = '📄'
+        folder_emoji = '📁'
+        emoji_map = self.extension_emoji_map
+        
+        # Pre-allocate list for tree items
+        tree_items = []
+        
         for item in items_to_load:
             name, size, mtime, path = item
             display_size = format_size(size)
@@ -2025,15 +2048,17 @@ class MdfindApp(QMainWindow):
             
             # emoji based on file type
             if os.path.isdir(path):
-                display_name = f"📁 {name}"
+                display_name = f"{folder_emoji} {name}"
             else:
                 # Get file extension and add appropriate emoji
                 _, ext = os.path.splitext(name.lower())
-                display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"     
+                emoji = emoji_map.get(ext, default_emoji)
+                display_name = f"{emoji} {name}"     
                        
-            tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
-            search_tab.tree.addTopLevelItem(tree_item)
+            tree_items.append(QTreeWidgetItem([display_name, display_size, display_time, path]))
         
+        # Add all items at once for better performance
+        search_tab.tree.addTopLevelItems(tree_items)
         search_tab.current_loaded = end_idx
     # ========== Search handling ==========
     def on_query_changed(self):
@@ -2190,7 +2215,8 @@ class MdfindApp(QMainWindow):
         self.lbl_items_found.setText(f"📊 {len(filtered_files)} items found")
 
     def apply_filters_and_sorting(self, files_info):
-        filtered = files_info[:]
+        """Apply filters to file list. Returns filtered list without modifying the original."""
+        # Parse filter values once
         try:
             min_size = int(self.edit_min_size.text()) if self.edit_min_size.text() else None
         except ValueError:
@@ -2200,23 +2226,44 @@ class MdfindApp(QMainWindow):
         except ValueError:
             max_size = None
 
-        if min_size is not None:
-            filtered = [item for item in filtered if item[1] >= min_size]
-        if max_size is not None:
-            filtered = [item for item in filtered if item[1] <= max_size]
-
+        # Parse extensions once and convert to set for O(1) lookup
         ext_text = self.edit_extension.text().strip()
+        exts_set = None
         if ext_text:
-            exts = []
+            exts_list = []
             for part in ext_text.split(";"):
                 part = part.strip()
-                if part and not part.startswith("."):
-                    part = "." + part
                 if part:
-                    exts.append(part.lower())
-            if exts:
-                filtered = [item for item in filtered if any(item[0].lower().endswith(e) for e in exts)]
-
+                    if not part.startswith("."):
+                        part = "." + part
+                    exts_list.append(part.lower())
+            if exts_list:
+                exts_set = set(exts_list)
+        
+        # Apply filters in a single pass if possible
+        if min_size is None and max_size is None and exts_set is None:
+            # No filters, return original list
+            return files_info
+        
+        # Apply filters
+        filtered = []
+        for item in files_info:
+            name, size, mtime, path = item
+            
+            # Size filters
+            if min_size is not None and size < min_size:
+                continue
+            if max_size is not None and size > max_size:
+                continue
+            
+            # Extension filter
+            if exts_set is not None:
+                _, ext = os.path.splitext(name.lower())
+                if ext not in exts_set:
+                    continue
+            
+            filtered.append(item)
+        
         return filtered
 
     def on_header_clicked(self, column):
@@ -2786,9 +2833,10 @@ class MdfindApp(QMainWindow):
                 column_letter = column[0].column_letter
                 for cell in column:
                     try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
+                        cell_length = len(str(cell.value))
+                        if cell_length > max_length:
+                            max_length = cell_length
+                    except (AttributeError, TypeError):
                         pass
                 adjusted_width = min(max_length + 2, 50)  # Max width of 50
                 ws.column_dimensions[column_letter].width = adjusted_width
@@ -4166,7 +4214,7 @@ class MdfindApp(QMainWindow):
                     hwnd, 20, byref(c_bool(is_dark)), sizeof(c_bool)
                 )
                 success = (result == 0)
-            except:
+            except (OSError, AttributeError):
                 pass
             
             # If Windows 11 method failed, try older Windows 10 method
@@ -4175,7 +4223,7 @@ class MdfindApp(QMainWindow):
                     windll.dwmapi.DwmSetWindowAttribute(
                         hwnd, 19, byref(c_bool(is_dark)), sizeof(c_bool)
                     )
-                except:
+                except (OSError, AttributeError):
                     pass
             
             # Also try to set the window caption color (Windows 11+)
@@ -4202,7 +4250,7 @@ class MdfindApp(QMainWindow):
                 windll.dwmapi.DwmSetWindowAttribute(
                     hwnd, 35, byref(wintypes.DWORD(caption_color)), sizeof(wintypes.DWORD)
                 )
-            except:
+            except (OSError, AttributeError):
                 pass  # Caption color setting not supported on this Windows version
                 
         except Exception as e:
