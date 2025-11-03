@@ -106,9 +106,11 @@ jobs:
                   'LSMinimumSystemVersion': '10.14',
                   'NSHighResolutionCapable': True,
               },
-              # Force py2app to use the current Python interpreter
-              'semi_standalone': False,
-              'site_packages': True,
+              # Use alias mode to avoid copying Python framework
+              'alias': False,
+              # This ensures we use the installed Python and don't try to bundle multiple versions
+              'strip': True,
+              'optimize': 2,
           }
           
           setup(
@@ -127,8 +129,23 @@ jobs:
           # Clean previous builds
           rm -rf build dist
           
+          # Debug: Show Python and PyQt6 information
+          echo "=== Python Information ==="
+          python --version
+          python -c "import sys; print('Python prefix:', sys.prefix)"
+          python -c "import sys; print('Python executable:', sys.executable)"
+          
+          echo "=== PyQt6 Information ==="
+          python -c "import PyQt6; print('PyQt6 location:', PyQt6.__file__)"
+          python -c "import PyQt6.QtCore; print('Qt version:', PyQt6.QtCore.qVersion())"
+          
           # Build universal version (supports both x86_64 and arm64)
-          python setup.py py2app --arch universal2
+          # Using --no-strip to preserve debugging symbols and see what's included
+          python setup.py py2app --arch universal2 2>&1 | tee build.log || {
+            echo "=== Build failed, showing last 100 lines of output ==="
+            tail -100 build.log
+            exit 1
+          }
           
           # Create archive
           cd dist
