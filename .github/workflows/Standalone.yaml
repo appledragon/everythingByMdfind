@@ -37,9 +37,16 @@ jobs:
       # 4. Install dependencies
       - name: Install dependencies
         run: |
+          # Clear pip cache to avoid Python version conflicts
+          pip cache purge || true
+          
+          # Upgrade pip
           pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install py2app
+          
+          # Install dependencies with no cache to ensure fresh build against Python 3.11
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir py2app
+          
           # Install librsvg for SVG conversion
           brew install librsvg
 
@@ -79,6 +86,7 @@ jobs:
         run: |
           cat > setup.py << 'EOF'
           from setuptools import setup
+          import sys
           
           APP = ['everything.py']
           DATA_FILES = [
@@ -97,7 +105,10 @@ jobs:
                   'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
                   'LSMinimumSystemVersion': '10.14',
                   'NSHighResolutionCapable': True,
-              }
+              },
+              # Force py2app to use the current Python interpreter
+              'semi_standalone': False,
+              'site_packages': True,
           }
           
           setup(
