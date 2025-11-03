@@ -584,8 +584,7 @@ def format_size(size):
 # Class to manage individual search tabs
 class SearchTab:
     """Manages the data and widgets for a single search tab"""
-    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions=""):
-        # Search parameters
+    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions="", is_pinned=False, tab_title="", extra_clause=None, is_bookmark=False):
         self.query = query
         self.directory = directory
         self.file_name_search = file_name_search
@@ -595,6 +594,14 @@ class SearchTab:
         self.max_size = max_size
         self.extensions = extensions
         
+        # Pin state
+        self.is_pinned = is_pinned
+        self.tab_title = tab_title  # Store original tab title
+        
+        # Bookmark search fields
+        self.extra_clause = extra_clause
+        self.is_bookmark = is_bookmark
+
         # Search results data
         self.all_file_data = []
         self.file_data = []
@@ -1250,6 +1257,11 @@ class MdfindApp(QMainWindow):
         
         # Create tab context menu
         self.tab_context_menu = QMenu(self)
+        
+        # Pin/Unpin action - will be updated dynamically
+        self.pin_action = self.tab_context_menu.addAction("📌 Pin Tab", self.toggle_pin_tab)
+        self.tab_context_menu.addSeparator()
+
         self.tab_context_menu.addAction("❌ Close", self.close_current_tab)
         self.tab_context_menu.addAction("🚫 Close Others", self.close_other_tabs)
         self.tab_context_menu.addAction("⬅️ Close to the Left", self.close_left_tabs)
@@ -1260,7 +1272,10 @@ class MdfindApp(QMainWindow):
         
         # Dictionary to store SearchTab instances by tab index
         self.search_tabs = {}
-
+        
+        # Maximum number of pinned tabs
+        self.MAX_PINNED_TABS = 10
+        
         # Progress bar
         self.progress = QProgressBar()
         self.progress.setMaximum(100)
@@ -1508,7 +1523,10 @@ class MdfindApp(QMainWindow):
         
         # Initialize beautiful tooltip for copy confirmations
         self.tooltip = BeautifulToolTip(self)
-
+        
+        # Restore pinned tabs from previous session
+        self.restore_pinned_tabs()
+        
     # ========== Tab Management ==========
     def get_current_tree(self):
         """Get the tree widget of the currently active tab"""
@@ -1535,7 +1553,7 @@ class MdfindApp(QMainWindow):
             return None
         return self.search_tabs[current_index]
     
-    def create_new_tab(self, query="", directory="", tab_title=""):
+    def create_new_tab(self, query="", directory="", tab_title="", extra_clause=None, is_bookmark=False):
         """Create a new search tab"""
         # Create SearchTab instance with current search parameters
         search_tab = SearchTab(
@@ -1546,7 +1564,10 @@ class MdfindApp(QMainWindow):
             full_match=self.chk_full_match.isChecked(),
             min_size=self.edit_min_size.text().strip(),
             max_size=self.edit_max_size.text().strip(),
-            extensions=self.edit_extension.text().strip()
+            extensions=self.edit_extension.text().strip(),
+            tab_title=tab_title,
+            extra_clause=extra_clause,
+            is_bookmark=is_bookmark  # Store the original title
         )
         
         # Apply default sort settings
@@ -1573,9 +1594,24 @@ class MdfindApp(QMainWindow):
         else:
             final_tab_title = "New Search"
         
-        # Add tab to widget
-        index = self.tab_widget.addTab(search_tab.tree, final_tab_title)
-        self.search_tabs[index] = search_tab
+        # Store the title
+        search_tab.tab_title = final_tab_title
+        
+        # Add tab to widget (after pinned tabs)
+        pinned_count = self.get_pinned_count()
+        index = self.tab_widget.insertTab(pinned_count, search_tab.tree, final_tab_title)
+        
+        # Re-index all tabs after insertion
+        new_tabs = {}
+        for i in range(self.tab_widget.count()):
+            for old_i, tab in self.search_tabs.items():
+                if self.tab_widget.widget(i) == tab.tree:
+                    new_tabs[i] = tab
+                    break
+        # Add the new tab
+        new_tabs[index] = search_tab
+        self.search_tabs = new_tabs
+        
         self.tab_widget.setCurrentIndex(index)
         
         # Set custom close button for better visibility
@@ -1628,10 +1664,17 @@ class MdfindApp(QMainWindow):
     def on_tab_changed(self, index):
         """Handle tab change event"""
         if index >= 0:
-            # Get the search tab for this index
+            # Check if this is a restored pinned tab that needs initial search
+            if index in self.search_tabs:
+                tab = self.search_tabs[index]
+                if hasattr(tab, 'needs_initial_search') and tab.needs_initial_search:
+                    self.trigger_tab_search(index, tab)
+                    tab.needs_initial_search = False
+            
+            # Get the current tab data
             current_tab = self.get_current_tab()
             if current_tab:
-                # Temporarily block signals to prevent triggering new searches
+                # Block signals to avoid triggering new searches when updating UI
                 self.edit_query.blockSignals(True)
                 self.edit_dir.blockSignals(True)
                 self.chk_file_name.blockSignals(True)
@@ -1692,64 +1735,307 @@ class MdfindApp(QMainWindow):
         self.context_menu_tab_index = tab_bar.tabAt(pos)
         
         if self.context_menu_tab_index >= 0:
+            # Update pin action text based on current pin state
+            tab = self.search_tabs.get(self.context_menu_tab_index)
+            if tab and tab.is_pinned:
+                self.pin_action.setText("📍 Unpin Tab")
+            else:
+                self.pin_action.setText("📌 Pin Tab")
+            
             # Show the context menu at the cursor position
             global_pos = tab_bar.mapToGlobal(pos)
-            self.tab_context_menu.exec(global_pos)
-    
+            self.tab_context_menu.exec(global_pos) 
+               
     def close_current_tab(self):
         """Close the tab that was right-clicked"""
         if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
             self.close_tab(self.context_menu_tab_index)
     
     def close_other_tabs(self):
-        """Close all tabs except the one that was right-clicked"""
+        """Close all tabs except the one that was right-clicked (skip pinned tabs)"""
         if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
             # Get all tab indices
             tab_count = self.tab_widget.count()
             tabs_to_close = []
             
-            # Collect indices of tabs to close (all except the clicked one)
+            # Collect indices of tabs to close (all except the clicked one, skip pinned)
             for i in range(tab_count):
                 if i != self.context_menu_tab_index:
-                    tabs_to_close.append(i)
+                    tab = self.search_tabs.get(i)
+                    # Skip pinned tabs
+                    if not (tab and tab.is_pinned):
+                        tabs_to_close.append(i)
             
             # Close tabs in reverse order to maintain correct indices
             for i in reversed(tabs_to_close):
                 self.close_tab(i)
     
     def close_left_tabs(self):
-        """Close all tabs to the left of the clicked tab"""
+        """Close all tabs to the left of the clicked tab (skip pinned tabs)"""
         if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
             # Close tabs in reverse order from the clicked tab to the first
             for i in range(self.context_menu_tab_index - 1, -1, -1):
-                self.close_tab(i)
+                tab = self.search_tabs.get(i)
+                # Skip pinned tabs
+                if not (tab and tab.is_pinned):
+                    self.close_tab(i)
     
     def close_right_tabs(self):
-        """Close all tabs to the right of the clicked tab"""
+        """Close all tabs to the right of the clicked tab (skip pinned tabs)"""
         if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
             # Get the current tab count
             tab_count = self.tab_widget.count()
             
             # Close tabs in reverse order from the last to the one after clicked tab
             for i in range(tab_count - 1, self.context_menu_tab_index, -1):
-                self.close_tab(i)
+                tab = self.search_tabs.get(i)
+                # Skip pinned tabs
+                if not (tab and tab.is_pinned):
+                    self.close_tab(i)
     
     def close_all_tabs(self):
-        """Close all search tabs"""
+        """Close all search tabs (skip pinned tabs)"""
         tab_count = self.tab_widget.count()
         if tab_count == 0:
             return
         
+        # Count unpinned tabs
+        unpinned_count = sum(1 for tab in self.search_tabs.values() if not tab.is_pinned)
+        
+        if unpinned_count == 0:
+            self.show_info("No Tabs to Close", "All tabs are pinned.")
+            return
+        
         reply = self.show_question(
             "Close All Tabs",
-            f"Are you sure you want to close all {tab_count} tabs?",
+            f"Are you sure you want to close all {unpinned_count} unpinned tabs?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            # Close tabs in reverse order to maintain correct indices
+            # Close tabs in reverse order to maintain correct indices (skip pinned)
             for i in reversed(range(tab_count)):
-                self.close_tab(i)
-
+                tab = self.search_tabs.get(i)
+                # Skip pinned tabs
+                if not (tab and tab.is_pinned):
+                    self.close_tab(i)
+                
+    # ========== Pin/Unpin Tab Methods ==========
+    def toggle_pin_tab(self):
+        """Toggle pin state of the right-clicked tab"""
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            index = self.context_menu_tab_index
+            tab = self.search_tabs.get(index)
+            if not tab:
+                return
+            
+            if tab.is_pinned:
+                self.unpin_tab(index)
+            else:
+                self.pin_tab(index)
+    
+    def pin_tab(self, index):
+        """Pin a tab"""
+        if index not in self.search_tabs:
+            return
+        
+        tab = self.search_tabs[index]
+        
+        # Check if we've reached the maximum number of pinned tabs
+        pinned_count = sum(1 for t in self.search_tabs.values() if t.is_pinned)
+        if pinned_count >= self.MAX_PINNED_TABS:
+            self.show_warning("Maximum Pinned Tabs", 
+                            f"You can only pin up to {self.MAX_PINNED_TABS} tabs at once.")
+            return
+        
+        # Set pin state
+        tab.is_pinned = True
+        
+        # Store the original title if not already stored
+        if not tab.tab_title:
+            tab.tab_title = self.tab_widget.tabText(index)
+        
+        # Move tab to the end of pinned tabs section
+        self.reorder_tabs_after_pin_change()
+        
+        # Update tab appearance
+        self.update_tab_style()
+        
+        # Save pinned tabs to config
+        self.save_pinned_tabs()
+    
+    def unpin_tab(self, index):
+        """Unpin a tab"""
+        if index not in self.search_tabs:
+            return
+        
+        tab = self.search_tabs[index]
+        tab.is_pinned = False
+        
+        # Reorder tabs
+        self.reorder_tabs_after_pin_change()
+        
+        # Update tab appearance
+        self.update_tab_style()
+        
+        # Save pinned tabs to config
+        self.save_pinned_tabs()
+    
+    def reorder_tabs_after_pin_change(self):
+        """Reorder tabs so pinned tabs are at the beginning"""
+        # Collect all tabs with their data
+        all_tabs = []
+        for i in range(self.tab_widget.count()):
+            tab = self.search_tabs.get(i)
+            if tab:
+                title = self.tab_widget.tabText(i)
+                all_tabs.append((i, tab, title))
+        
+        # Sort: pinned tabs first, then unpinned tabs (maintain relative order)
+        pinned_tabs = [(i, tab, title) for i, tab, title in all_tabs if tab.is_pinned]
+        unpinned_tabs = [(i, tab, title) for i, tab, title in all_tabs if not tab.is_pinned]
+        
+        # Block signals to prevent triggering tab changes
+        self.tab_widget.blockSignals(True)
+        
+        try:
+            # Remove all tabs
+            for i in reversed(range(self.tab_widget.count())):
+                self.tab_widget.removeTab(i)
+            
+            # Clear the search_tabs dict
+            self.search_tabs.clear()
+            
+            # Re-add tabs in correct order: pinned first, then unpinned
+            new_index = 0
+            for old_i, tab, title in pinned_tabs + unpinned_tabs:
+                self.tab_widget.addTab(tab.tree, title)
+                self.search_tabs[new_index] = tab
+                self.update_tab_close_button(new_index)
+                new_index += 1
+        finally:
+            self.tab_widget.blockSignals(False)
+        
+        # Update all tab styling
+        self.update_tab_style()
+    
+    def get_pinned_count(self):
+        """Get the number of currently pinned tabs"""
+        return sum(1 for tab in self.search_tabs.values() if tab.is_pinned)
+    
+    def save_pinned_tabs(self):
+        """Save pinned tabs to config"""
+        config = read_config()
+        pinned_tabs_data = []
+        
+        for i in range(self.tab_widget.count()):
+            tab = self.search_tabs.get(i)
+            if tab and tab.is_pinned:
+                pinned_tabs_data.append({
+                    "query": tab.query,
+                    "directory": tab.directory,
+                    "title": tab.tab_title or self.tab_widget.tabText(i),
+                    "file_name_search": tab.file_name_search,
+                    "match_case": tab.match_case,
+                    "full_match": tab.full_match,
+                    "min_size": tab.min_size,
+                    "max_size": tab.max_size,
+                    "extensions": tab.extensions,
+                    "extra_clause": tab.extra_clause,
+                    "is_bookmark": tab.is_bookmark
+                })
+        
+        config["pinned_tabs"] = pinned_tabs_data
+        write_config(config)
+    
+    def trigger_tab_search(self, index, search_tab):
+        """Trigger search for a restored pinned tab"""
+        # Don't start if already searching
+        if search_tab.search_worker is not None and search_tab.search_worker.isRunning():
+            return
+        
+        # Start the search
+        search_tab.search_worker = SearchWorker(
+            search_tab.query,
+            search_tab.directory,
+            search_tab.file_name_search,
+            search_tab.match_case,
+            search_tab.full_match,
+            search_tab.extra_clause,
+            search_tab.is_bookmark
+        )
+        search_tab.search_worker.progress_signal.connect(self.update_progress)
+        search_tab.search_worker.result_signal.connect(lambda results, st=search_tab: self.update_tree(results, st))
+        search_tab.search_worker.error_signal.connect(self.show_error)
+        search_tab.search_worker.start()
+    
+    def restore_pinned_tabs(self):
+        """Restore pinned tabs from config on startup"""
+        config = read_config()
+        pinned_tabs_data = config.get("pinned_tabs", [])
+        
+        if not pinned_tabs_data:
+            return
+        
+        # Restore each pinned tab
+        for tab_data in pinned_tabs_data:
+            # Create SearchTab with is_pinned=True
+            search_tab = SearchTab(
+                query=tab_data.get("query", ""),
+                directory=tab_data.get("directory", ""),
+                file_name_search=tab_data.get("file_name_search", True),
+                match_case=tab_data.get("match_case", False),
+                full_match=tab_data.get("full_match", False),
+                min_size=tab_data.get("min_size", ""),
+                max_size=tab_data.get("max_size", ""),
+                extensions=tab_data.get("extensions", ""),
+                is_pinned=True,
+                tab_title=tab_data.get("title", ""),
+                extra_clause=tab_data.get("extra_clause"),
+                is_bookmark=tab_data.get("is_bookmark", False)
+            )
+            
+            # Apply default sort settings
+            search_tab.sort_column = self.default_sort_column
+            search_tab.sort_order = self.default_sort_order
+            if self.default_sort_column != -1:
+                search_tab.tree.header().setSortIndicator(self.default_sort_column, self.default_sort_order)
+            
+            # Connect tree signals
+            search_tab.tree.itemSelectionChanged.connect(self.on_tree_selection_changed)
+            search_tab.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            search_tab.tree.customContextMenuRequested.connect(self.show_context_menu)
+            search_tab.tree.itemDoubleClicked.connect(self.open_with_default_app)
+            search_tab.tree.header().setSectionsClickable(True)
+            search_tab.tree.header().setSortIndicatorShown(True)
+            search_tab.tree.header().sectionClicked.connect(self.on_header_clicked)
+            search_tab.tree.verticalScrollBar().valueChanged.connect(self.check_scroll_position)
+            
+            # Use stored title with pin icon
+            tab_title = search_tab.tab_title or "Pinned Tab"
+            display_title = f"📌 {tab_title}"
+            
+            # Add tab to widget
+            index = self.tab_widget.addTab(search_tab.tree, display_title)
+            self.search_tabs[index] = search_tab
+            
+            # Set custom close button (will be hidden for pinned tabs)
+            self.update_tab_close_button(index)
+            
+            # Mark tab as needing search (will be triggered when user switches to it)
+            if search_tab.query or search_tab.extra_clause:
+                search_tab.needs_initial_search = True
+        
+        # Update tab styling after all pinned tabs are restored
+        if pinned_tabs_data:
+            self.update_tab_style()
+            
+            # Trigger search for the first pinned tab only (will become active)
+            if 0 in self.search_tabs:
+                first_tab = self.search_tabs[0]
+                if hasattr(first_tab, 'needs_initial_search') and first_tab.needs_initial_search:
+                    self.trigger_tab_search(0, first_tab)
+                    first_tab.needs_initial_search = False
+            
     # ========== Preview logic ==========
     def on_tree_selection_changed(self):
         # if preview is not visible, do nothing
@@ -2051,7 +2337,7 @@ class MdfindApp(QMainWindow):
             return
 
         # Create a new tab for this search
-        search_tab = self.create_new_tab(query, directory, tab_title)
+        search_tab = self.create_new_tab(query, directory, tab_title, extra_clause, is_bookmark)
         
         # Stop any existing search in this tab
         if search_tab.search_worker is not None and search_tab.search_worker.isRunning():
@@ -2459,7 +2745,18 @@ class MdfindApp(QMainWindow):
             return
         directory = os.path.dirname(path)
         old_name = os.path.basename(path)
-        new_name, ok = QInputDialog.getText(self, "✏️ Rename File", f"Enter new name for {old_name}:", QLineEdit.EchoMode.Normal, old_name)
+        
+        # Create input dialog and apply theme
+        input_dialog = QInputDialog(self)
+        input_dialog.setWindowTitle("✏️ Rename File")
+        input_dialog.setLabelText(f"Enter new name for {old_name}:")
+        input_dialog.setTextValue(old_name)
+        input_dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        self.apply_dialog_dark_mode(input_dialog)
+        
+        ok = input_dialog.exec()
+        new_name = input_dialog.textValue()
+        
         if ok and new_name:
             new_full_path = os.path.join(directory, new_name)
             try:
@@ -2484,10 +2781,28 @@ class MdfindApp(QMainWindow):
         files = self.get_selected_files()
         if not files:
             return
-        prefix, ok_prefix = QInputDialog.getText(self, "✏️ Batch Rename", "Enter prefix (optional):")
+        
+        # Create input dialog for prefix and apply theme
+        prefix_dialog = QInputDialog(self)
+        prefix_dialog.setWindowTitle("✏️ Batch Rename")
+        prefix_dialog.setLabelText("Enter prefix (optional):")
+        prefix_dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        self.apply_dialog_dark_mode(prefix_dialog)
+        
+        ok_prefix = prefix_dialog.exec()
+        prefix = prefix_dialog.textValue()
         if not ok_prefix:
             return
-        suffix, ok_suffix = QInputDialog.getText(self, "✏️ Batch Rename", "Enter suffix (optional):")
+        
+        # Create input dialog for suffix and apply theme
+        suffix_dialog = QInputDialog(self)
+        suffix_dialog.setWindowTitle("✏️ Batch Rename")
+        suffix_dialog.setLabelText("Enter suffix (optional):")
+        suffix_dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        self.apply_dialog_dark_mode(suffix_dialog)
+        
+        ok_suffix = suffix_dialog.exec()
+        suffix = suffix_dialog.textValue()
         if not ok_suffix:
             return
 
@@ -3055,134 +3370,158 @@ class MdfindApp(QMainWindow):
 
     
     def update_tab_close_button(self, index):
-        """Update close button appearance for a specific tab"""
-        # Get the tab bar
+        """Update close button styling and visibility for a tab"""
         tab_bar = self.tab_widget.tabBar()
+        tab = self.search_tabs.get(index)
         
-        # Get the close button for this tab
-        close_button = tab_bar.tabButton(index, tab_bar.ButtonPosition.RightSide)
-        if close_button:
-            # Set a tooltip
-            close_button.setToolTip("Close tab")
-            
-            # Force the button to show "×" (multiplication sign) for better visibility
-            close_button.setText("×")
-            
-            # No need to set individual styles - they are handled by the main stylesheet
-    
+        if tab and tab.is_pinned:
+            # Hide close button for pinned tabs
+            close_button = tab_bar.tabButton(index, tab_bar.ButtonPosition.RightSide)
+            if close_button:
+                close_button.hide()
+        else:
+            # Show close button for unpinned tabs
+            close_button = tab_bar.tabButton(index, tab_bar.ButtonPosition.RightSide)
+            if close_button:
+                close_button.show()
+                close_button.setToolTip("Close tab")
+                close_button.setText("×")
+                    
     def update_all_tab_close_buttons(self):
         """Update all tab close buttons to show clear X"""
         for i in range(self.tab_widget.count()):
             self.update_tab_close_button(i)
     
     def calculate_tab_width(self):
-        """Calculate optimal tab width based on number of tabs"""
+        """Calculate appropriate tab width based on number of tabs and screen size"""
         tab_count = self.tab_widget.count()
         if tab_count == 0:
-            return min(240, self.tab_width)  # Default to reasonable width
+            return {
+                'pinned': 80,
+                'unpinned': 240
+            }
         
-        # Get the tab bar width
         tab_bar = self.tab_widget.tabBar()
         available_width = tab_bar.width()
         
-        # If tab bar width is not available yet, use window width
-        if available_width <= 0:
-            available_width = self.width() - 100
+        # Reserve space for scroll buttons and margins
+        reserved_width = 80
+        available_width = max(available_width - reserved_width, 200)
         
-        # Reserve space for scroll buttons and some margin
-        available_width = available_width - 80
+        # Count pinned and unpinned tabs
+        pinned_count = self.get_pinned_count()
+        unpinned_count = tab_count - pinned_count
         
-        # Define min and max tab widths
+        # Pinned tabs get fixed smaller width
+        pinned_tab_width = 80
+        
+        # Calculate width for unpinned tabs
         min_tab_width = 80
         max_tab_width = 240
         
-        # Calculate optimal width
-        optimal_width = available_width // tab_count
-        
-        # Clamp to min/max values
-        if optimal_width < min_tab_width:
-            return min_tab_width
-        elif optimal_width > max_tab_width:
-            return max_tab_width
+        if unpinned_count > 0:
+            # Subtract space used by pinned tabs
+            space_for_unpinned = available_width - (pinned_count * pinned_tab_width)
+            optimal_width = space_for_unpinned // unpinned_count
+            unpinned_tab_width = max(min_tab_width, min(optimal_width, max_tab_width))
         else:
-            return optimal_width
-    
+            unpinned_tab_width = max_tab_width
+        
+        return {
+            'pinned': pinned_tab_width,
+            'unpinned': unpinned_tab_width
+        }
+                    
     def update_tab_style(self):
-        """Update tab widget style based on current theme"""
-        # Calculate dynamic tab width
-        dynamic_tab_width = self.calculate_tab_width()
+        """Update tab styling based on current theme"""
+        tab_widths = self.calculate_tab_width()
+        pinned_width = tab_widths['pinned']
+        unpinned_width = tab_widths['unpinned']
+        
+        # Update tab text to show pin icon for pinned tabs
+        for i in range(self.tab_widget.count()):
+            tab = self.search_tabs.get(i)
+            if tab:
+                title = tab.tab_title or self.tab_widget.tabText(i).replace("📌 ", "")
+                if tab.is_pinned:
+                    self.tab_widget.setTabText(i, f"📌 {title}")
+                else:
+                    self.tab_widget.setTabText(i, title)
+        
         if self.dark_mode:
-            # Dark mode style with blue indicator for selected tab
+            # Dark mode styling with pin support
             self.tab_widget.setStyleSheet(f"""
                 QTabWidget::pane {{
-                    border: 1px solid #555555;
-                    background: #2b2b2b;
-                }}
-                QTabBar {{
-                    alignment: left;
+                    border: 1px solid #3c3c3c;
+                    background-color: #2b2b2b;
+                    border-radius: 4px;
                 }}
                 QTabBar::tab {{
-                    background: #3c3f41;
-                    border: 1px solid #555555;
-                    border-bottom: none;
-                    border-top: 2px solid transparent;
-                    padding: 6px 12px 8px 12px;
+                    background-color: #2b2b2b;
+                    color: #cccccc;
+                    padding: 8px 12px;
                     margin-right: 2px;
-                    min-width: {dynamic_tab_width}px;
-                    max-width: {dynamic_tab_width}px;
-                    color: #f0f0f0;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    min-width: {unpinned_width}px;
+                    max-width: {unpinned_width}px;
                 }}
                 QTabBar::tab:selected {{
-                    background: #2b2b2b;
-                    border-color: #555555;
+                    background-color: #3c3c3c;
+                    color: white;
                     border-top: 2px solid #007acc;
                 }}
                 QTabBar::tab:hover {{
-                    background: #4a4a4a;
-                    border-top: 2px solid #4a9eff;
+                    background-color: #383838;
                 }}
-                QTabBar::tab:hover:selected {{
-                    border-top: 2px solid #007acc;
+                QTabBar::tab:!selected {{
+                    margin-top: 2px;
+                }}
+                /* Style for pinned tabs */
+                QTabBar::tab:first {{
+                    min-width: {pinned_width}px;
+                    max-width: {pinned_width}px;
                 }}
             """)
         else:
-            # Light mode style with blue indicator for selected tab
+            # Light mode styling with pin support
             self.tab_widget.setStyleSheet(f"""
                 QTabWidget::pane {{
-                    border: 1px solid #cccccc;
-                    background: white;
-                }}
-                QTabBar {{
-                    alignment: left;
+                    border: 1px solid #c0c0c0;
+                    background-color: white;
+                    border-radius: 4px;
                 }}
                 QTabBar::tab {{
-                    background: #f0f0f0;
-                    border: 1px solid #cccccc;
-                    border-bottom: none;
-                    border-top: 3px solid transparent;
-                    padding: 6px 12px 8px 12px;
+                    background-color: #f0f0f0;
+                    color: #333333;
+                    padding: 8px 12px;
                     margin-right: 2px;
-                    min-width: {dynamic_tab_width}px;
-                    max-width: {dynamic_tab_width}px;
-                    color: #000000;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    min-width: {unpinned_width}px;
+                    max-width: {unpinned_width}px;
                 }}
                 QTabBar::tab:selected {{
-                    background: white;
-                    border-color: #cccccc;
+                    background-color: white;
+                    color: #000000;
                     border-top: 3px solid #007acc;
                 }}
                 QTabBar::tab:hover {{
-                    background: #e0e0e0;
-                    border-top: 3px solid #4a9eff;
+                    background-color: #e0e0e0;
                 }}
-                QTabBar::tab:hover:selected {{
-                    border-top: 3px solid #007acc;
+                QTabBar::tab:!selected {{
+                    margin-top: 2px;
+                }}
+                /* Style for pinned tabs */
+                QTabBar::tab:first {{
+                    min-width: {pinned_width}px;
+                    max-width: {pinned_width}px;
                 }}
             """)
         
-        # Update all existing tab close buttons to show clear "X"
+        # Update all tab close buttons
         self.update_all_tab_close_buttons()
-    
+        
     def set_non_dark_mode(self):
         self.setStyleSheet("""
             QMainWindow {
@@ -5340,12 +5679,30 @@ class MdfindApp(QMainWindow):
             write_config(cfg)
             self.query_completer.model().setStringList(self.query_history)
             self.show_info("🧹 History Cleared", "Search history cleared.")
+    
+    def create_dialog_icon(self, emoji, color):
+        """Create a colored icon pixmap for dialog boxes"""
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw emoji with larger font
+        font = QFont()
+        font.setPointSize(48)
+        painter.setFont(font)
+        painter.setPen(QColor(color))
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, emoji)
+        
+        painter.end()
+        return pixmap
 
     def apply_dialog_dark_mode(self, dialog):
         """Apply modern styling to dialog boxes based on current theme"""
         if self.dark_mode:
             dialog.setStyleSheet("""
-                QDialog, QMessageBox {
+                QDialog, QMessageBox, QInputDialog {
                     background-color: #2d2d30;
                     color: #d4d4d4;
                     border: 1px solid #404040;
@@ -5355,6 +5712,19 @@ class MdfindApp(QMainWindow):
                     color: #d4d4d4;
                     font-size: 13px;
                     padding: 8px;
+                }
+                QLineEdit {
+                    background-color: #1e1e1e;
+                    color: #d4d4d4;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 8px;
+                    selection-background-color: #264f78;
+                    selection-color: #ffffff;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #1177bb;
+                    background-color: #252525;
                 }
                 QPushButton {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
@@ -5375,10 +5745,30 @@ class MdfindApp(QMainWindow):
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                         stop: 0 #083d5c, stop: 1 #062d43);
                 }
+                QMessageBox QLabel#qt_msgbox_label {
+                    color: #d4d4d4;
+                }
+                QMessageBox QLabel#qt_msgboxex_icon_label {
+                    background-color: transparent;
+                }
             """)
+            
+            # Fix icon visibility in dark mode by using a text-based icon instead
+            if isinstance(dialog, QMessageBox):
+                icon_type = dialog.icon()
+                # Create a custom colored pixmap for better visibility in dark mode
+                if icon_type == QMessageBox.Icon.Question:
+                    # Use a custom question icon with better visibility
+                    dialog.setIconPixmap(self.create_dialog_icon("❓", "#4a9eff"))
+                elif icon_type == QMessageBox.Icon.Warning:
+                    dialog.setIconPixmap(self.create_dialog_icon("⚠️", "#ffcc00"))
+                elif icon_type == QMessageBox.Icon.Critical:
+                    dialog.setIconPixmap(self.create_dialog_icon("❌", "#ff4444"))
+                elif icon_type == QMessageBox.Icon.Information:
+                    dialog.setIconPixmap(self.create_dialog_icon("ℹ️", "#4a9eff"))
         else:
             dialog.setStyleSheet("""
-                QDialog, QMessageBox {
+                QDialog, QMessageBox, QInputDialog {
                     background-color: #ffffff;
                     color: #24292f;
                     border: 1px solid #d1d9e0;
@@ -5388,6 +5778,19 @@ class MdfindApp(QMainWindow):
                     color: #24292f;
                     font-size: 13px;
                     padding: 8px;
+                }
+                QLineEdit {
+                    background-color: #ffffff;
+                    color: #24292f;
+                    border: 1px solid #d1d9e0;
+                    border-radius: 4px;
+                    padding: 8px;
+                    selection-background-color: #0969da;
+                    selection-color: #ffffff;
+                }
+                QLineEdit:focus {
+                    border: 1px solid #0969da;
+                    background-color: #f6f8fa;
                 }
                 QPushButton {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
@@ -5478,6 +5881,9 @@ class MdfindApp(QMainWindow):
             self.update_tab_style()
     
     def closeEvent(self, event):
+        # Save pinned tabs before closing
+        self.save_pinned_tabs()
+        
         # Clean up all tabs to prevent crashes
         for index in list(self.search_tabs.keys()):
             self.close_tab(index)
@@ -5490,7 +5896,7 @@ class MdfindApp(QMainWindow):
         config["window_size"] = {"width": self.width(), "height": self.height()}
         write_config(config)
         super().closeEvent(event)
-    
+            
     # === Updated bookmark methods ===
     def bookmark_large_files(self):
         clause = 'kMDItemFSSize >= 52428800'
