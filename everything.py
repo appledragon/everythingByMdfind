@@ -20,12 +20,15 @@ import time
 import csv
 import shutil
 import zipfile
+import traceback
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
     QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
-    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget, QDialog, QRadioButton, QButtonGroup
+    QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget, QDialog, QRadioButton, QButtonGroup,
+    QProgressDialog
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QActionGroup
@@ -726,6 +729,59 @@ class SearchWorker(QThread):
                 pass
 
 
+class DirectoryScanWorker(QThread):
+    """Scan top-level directories under a root path and report sizes"""
+
+    progress_signal = pyqtSignal(int, int, str)  # processed, total, current dir name
+    result_signal = pyqtSignal(list)
+    error_signal = pyqtSignal(str)
+    cancelled_signal = pyqtSignal()
+
+    def __init__(self, root_path, entries=None):
+        super().__init__()
+        self.root_path = Path(root_path)
+        self.entries = entries
+        self._is_running = True
+
+    def run(self):
+        try:
+            entries = self.entries if self.entries is not None else [entry for entry in self.root_path.iterdir() if entry.is_dir()]
+        except Exception as exc:
+            self.error_signal.emit(f"Failed to list '{self.root_path}': {exc}")
+            return
+
+        total = len(entries)
+        if total == 0:
+            self.result_signal.emit([])
+            return
+
+        results = []
+        for idx, entry in enumerate(entries, start=1):
+            if not self._is_running:
+                self.cancelled_signal.emit()
+                return
+
+            size_bytes = self._get_directory_size(entry)
+            results.append((entry.name, size_bytes))
+
+            self.progress_signal.emit(idx, total, entry.name)
+
+        self.result_signal.emit(results)
+
+    def _get_directory_size(self, entry):
+        try:
+            output = subprocess.check_output(
+                ["du", "-skxP", str(entry)],
+                stderr=subprocess.DEVNULL
+            ).split()[0]
+            return int(output) * 1024
+        except Exception:
+            return 0
+
+    def stop(self):
+        self._is_running = False
+
+
 class MediaPlayerManager:
     """Manages media playback functionality shared between embedded and standalone players"""
     
@@ -1044,6 +1100,8 @@ class MdfindApp(QMainWindow):
         file_menu = menubar.addMenu('📁 File')
         export_action = file_menu.addAction('📤 Export Results...')
         export_action.triggered.connect(self.export_results)
+        self.scan_home_action = file_menu.addAction('🏠 Scan Home Usage')
+        self.scan_home_action.triggered.connect(self.start_directory_scan)
         export_action.setShortcut('Ctrl+E')
         
         help_menu = menubar.addMenu('❓ Help')
@@ -1262,6 +1320,13 @@ class MdfindApp(QMainWindow):
         self.pin_action = self.tab_context_menu.addAction("📌 Pin Tab", self.toggle_pin_tab)
         self.tab_context_menu.addSeparator()
 
+        # Scan selected directory action (enabled only when a folder is selected)
+        self.scan_selected_dir_action = self.tab_context_menu.addAction(
+            "📁 Scan Selected Folder", self.scan_selected_directory
+        )
+        self.scan_selected_dir_action.setEnabled(True)
+        self.tab_context_menu.addSeparator()
+
         self.tab_context_menu.addAction("❌ Close", self.close_current_tab)
         self.tab_context_menu.addAction("🚫 Close Others", self.close_other_tabs)
         self.tab_context_menu.addAction("⬅️ Close to the Left", self.close_left_tabs)
@@ -1272,6 +1337,7 @@ class MdfindApp(QMainWindow):
         
         # Dictionary to store SearchTab instances by tab index
         self.search_tabs = {}
+        self.context_menu_selected_dir = None
         
         # Maximum number of pinned tabs
         self.MAX_PINNED_TABS = 10
@@ -1481,6 +1547,9 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addAction("📁 Copy path without file name", self.copy_path_only)
         self.single_context_menu.addAction("📝 Copy file name only", self.copy_file_name_only)
         self.single_context_menu.addSeparator()
+        self.scan_item_action = self.single_context_menu.addAction("📁 Scan Folder Usage", self.scan_selected_tree_item)
+        self.scan_item_action.setEnabled(False)
+        self.single_context_menu.addSeparator()
         self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
         self.single_context_menu.addAction("🔍 Open in Finder", self.open_in_finder)
         self.single_context_menu.addAction("📤 Export Results", self.export_results)
@@ -1495,6 +1564,15 @@ class MdfindApp(QMainWindow):
         self.multi_context_menu.addAction("🗜️ Compress to ZIP", self.compress_multiple_files)
 
         self.batch_size = 100
+
+        # Directory scan state
+        self.scan_worker = None
+        self.scan_total_dirs = 0
+        self.scan_processed_dirs = 0
+        self.scan_root_display = ""
+        self.scan_dialog = None
+        self.scan_context_label = "Home Usage Scan"
+        self.scan_tab_prefix = "Home Usage"
 
         # Create the standalone player window but don't show it yet
         self.standalone_player = StandalonePlayerWindow(self)
@@ -1553,12 +1631,19 @@ class MdfindApp(QMainWindow):
             return None
         return self.search_tabs[current_index]
     
-    def create_new_tab(self, query="", directory="", tab_title="", extra_clause=None, is_bookmark=False):
+    def create_new_tab(self, query="", directory="", tab_title="", extra_clause=None, is_bookmark=False, force_parameters=False):
         """Create a new search tab"""
+        if force_parameters:
+            search_query = query
+            search_directory = directory
+        else:
+            search_query = query or self.edit_query.text().strip()
+            search_directory = directory or self.edit_dir.text().strip()
+
         # Create SearchTab instance with current search parameters
         search_tab = SearchTab(
-            query=query or self.edit_query.text().strip(),
-            directory=directory or self.edit_dir.text().strip(),
+            query=search_query,
+            directory=search_directory,
             file_name_search=self.chk_file_name.isChecked(),
             match_case=self.chk_match_case.isChecked(),
             full_match=self.chk_full_match.isChecked(),
@@ -1589,8 +1674,8 @@ class MdfindApp(QMainWindow):
         # Create tab title - use custom title if provided, otherwise use query or default
         if tab_title:
             final_tab_title = tab_title
-        elif query:
-            final_tab_title = query
+        elif search_query:
+            final_tab_title = search_query
         else:
             final_tab_title = "New Search"
         
@@ -1741,6 +1826,19 @@ class MdfindApp(QMainWindow):
                 self.pin_action.setText("📍 Unpin Tab")
             else:
                 self.pin_action.setText("📌 Pin Tab")
+
+            # Determine if a directory is selected in this tab's tree
+            self.context_menu_selected_dir = None
+            if tab and hasattr(tab, 'tree'):
+                try:
+                    selected_items = tab.tree.selectedItems()
+                except RuntimeError:
+                    selected_items = []
+                if selected_items:
+                    path = selected_items[0].text(3)
+                    if os.path.isdir(path):
+                        self.context_menu_selected_dir = path
+            self.scan_selected_dir_action.setEnabled(self.context_menu_selected_dir is not None)
             
             # Show the context menu at the cursor position
             global_pos = tab_bar.mapToGlobal(pos)
@@ -1818,6 +1916,42 @@ class MdfindApp(QMainWindow):
                 # Skip pinned tabs
                 if not (tab and tab.is_pinned):
                     self.close_tab(i)
+
+    def scan_selected_directory(self):
+        """Trigger a usage scan for the folder selected in the tab's tree"""
+        selected_path = getattr(self, "context_menu_selected_dir", None)
+        if not selected_path or not os.path.isdir(selected_path):
+            self.show_info("Folder Usage Scan", "Please select a folder in the tab first.")
+            return
+
+        # Switch to the tab where the context menu was opened
+        if hasattr(self, 'context_menu_tab_index') and self.context_menu_tab_index >= 0:
+            self.tab_widget.setCurrentIndex(self.context_menu_tab_index)
+
+        self.start_directory_scan(Path(selected_path))
+
+    def scan_selected_tree_item(self):
+        """Trigger a usage scan for the folder selected inside the current tab tree"""
+        tree = self.get_current_tree()
+        if not tree:
+            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            return
+
+        try:
+            selected_items = tree.selectedItems()
+        except RuntimeError:
+            selected_items = []
+
+        if not selected_items:
+            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            return
+
+        path = selected_items[0].text(3)
+        if not path or not os.path.isdir(path):
+            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            return
+
+        self.start_directory_scan(Path(path))
                 
     # ========== Pin/Unpin Tab Methods ==========
     def toggle_pin_tab(self):
@@ -2443,6 +2577,162 @@ class MdfindApp(QMainWindow):
     def show_error(self, msg):
         self.show_critical("❌ Error", msg)
 
+    # ========== Directory scan ==========
+    def start_directory_scan(self, target_path=None):
+        # QAction.triggered(bool) passes a boolean checked state; treat that as no target path
+        if isinstance(target_path, bool):
+            target_path = None
+        if self.scan_worker and self.scan_worker.isRunning():
+            self.show_info(self.scan_context_label, "A scan is already running.")
+            return
+
+        if target_path is None:
+            scan_path = Path.home()
+            self.scan_context_label = "Home Usage Scan"
+            self.scan_tab_prefix = "Home Usage"
+        else:
+            scan_path = Path(target_path)
+            folder_label = scan_path.name or str(scan_path)
+            self.scan_context_label = f"Folder Usage Scan ({folder_label})"
+            self.scan_tab_prefix = f"{folder_label} Usage"
+
+        if not scan_path.is_dir():
+            self.show_error(f"Directory scan failed: {scan_path} is not a directory.")
+            return
+
+        try:
+            entries = sorted(
+                [entry for entry in scan_path.iterdir() if entry.is_dir()],
+                key=lambda item: item.name.lower()
+            )
+        except Exception as exc:
+            self.show_error(f"Directory scan failed: {exc}")
+            return
+
+        if not entries:
+            self.show_info(self.scan_context_label, f"No subdirectories found under {scan_path}.")
+            return
+
+        self.scan_total_dirs = len(entries)
+        self.scan_processed_dirs = 0
+        self.scan_root_display = str(scan_path)
+        self.progress.setValue(0)
+        self._open_scan_dialog(
+            f"Scanning {self.scan_root_display}\n0/{self.scan_total_dirs} folders processed"
+        )
+
+        if hasattr(self, 'scan_home_action'):
+            self.scan_home_action.setEnabled(False)
+
+        self.scan_worker = DirectoryScanWorker(scan_path, entries=entries)
+        self.scan_worker.progress_signal.connect(self.on_scan_progress)
+        self.scan_worker.result_signal.connect(self.on_scan_results)
+        self.scan_worker.error_signal.connect(self.on_scan_error)
+        self.scan_worker.cancelled_signal.connect(self.on_scan_cancelled)
+        self.scan_worker.finished.connect(self.on_scan_finished)
+        self.scan_worker.start()
+
+    def cancel_directory_scan(self):
+        if self.scan_worker and self.scan_worker.isRunning():
+            self.scan_worker.stop()
+            if self.scan_dialog:
+                self.scan_dialog.setLabelText("Cancelling scan...")
+        else:
+            self._close_scan_dialog()
+
+    def on_scan_progress(self, processed, total, current_name):
+        self.scan_processed_dirs = processed
+        percent = int(processed * 100 / total) if total else 0
+        self.progress.setValue(percent)
+        dialog = self.scan_dialog
+        if dialog:
+            dialog.setMaximum(total)
+            dialog.setValue(processed)
+            dialog.setLabelText(f"Processing {processed}/{total}: {current_name}")
+
+    def on_scan_results(self, results):
+        root_path = self.scan_root_display or str(Path.home())
+        self._close_scan_dialog()
+        self._show_scan_results_tab(root_path, results)
+        self._reset_scan_state()
+
+    def on_scan_cancelled(self):
+        self._close_scan_dialog()
+        message = f"Scan cancelled after {self.scan_processed_dirs}/{self.scan_total_dirs} folders."
+        self.show_info(self.scan_context_label, message)
+        self._reset_scan_state()
+
+    def on_scan_error(self, message):
+        self._close_scan_dialog()
+        self.show_error(message)
+        self._reset_scan_state()
+
+    def on_scan_finished(self):
+        self.scan_worker = None
+
+    def _open_scan_dialog(self, initial_text):
+        self._close_scan_dialog()
+        self.scan_dialog = QProgressDialog(initial_text, "Cancel Scan", 0, max(1, self.scan_total_dirs), self)
+        self.scan_dialog.setWindowTitle(self.scan_context_label)
+        self.scan_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.scan_dialog.setAutoClose(False)
+        self.scan_dialog.setAutoReset(False)
+        self.scan_dialog.canceled.connect(self.cancel_directory_scan)
+        self.apply_dialog_dark_mode(self.scan_dialog)
+        self.scan_dialog.setMinimumSize(560, 240)
+        self.scan_dialog.resize(560, 240)
+        self.scan_dialog.show()
+
+    def _close_scan_dialog(self):
+        if self.scan_dialog:
+            self.scan_dialog.hide()
+            self.scan_dialog.deleteLater()
+            self.scan_dialog = None
+
+    def _reset_scan_state(self):
+        if hasattr(self, 'scan_home_action'):
+            self.scan_home_action.setEnabled(True)
+        self.progress.setValue(0)
+        self.scan_root_display = ""
+        self.scan_total_dirs = 0
+        self.scan_processed_dirs = 0
+
+    def _show_scan_results_tab(self, root_path, results):
+        if not results:
+            self.show_info(self.scan_context_label, "Scan completed but no folders were reported.")
+            return
+
+        timestamp = time.strftime("%H:%M:%S")
+        tab_title = f"{self.scan_tab_prefix} ({timestamp})"
+        scan_tab = self.create_new_tab(
+            query="",
+            directory=root_path,
+            tab_title=tab_title,
+            extra_clause=None,
+            is_bookmark=False,
+            force_parameters=True
+        )
+        scan_tab.query = ""
+        sorted_results = sorted(results, key=lambda item: item[1], reverse=True)
+        enriched = []
+        for name, size in sorted_results:
+            path = os.path.join(root_path, name)
+            try:
+                mtime = os.path.getmtime(path)
+            except Exception:
+                mtime = 0
+            enriched.append((name, size, mtime, path))
+
+        scan_tab.tree.clear()
+        scan_tab.all_file_data = enriched
+        scan_tab.file_data = enriched
+        scan_tab.current_loaded = 0
+        scan_tab.items_found_count = len(enriched)
+        while scan_tab.current_loaded < len(enriched):
+            self.load_more_items(scan_tab)
+        self.lbl_items_found.setText(f"📊 {len(enriched)} items found")
+        self.show_info(self.scan_context_label, f"Results opened in tab '{tab_title}'.")
+
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
         """Handle changes to filter fields and update current tab attributes"""
@@ -2557,6 +2847,8 @@ class MdfindApp(QMainWindow):
             return
         if len(selected_items) == 1:
             tree.setCurrentItem(selected_items[0])
+            path = selected_items[0].text(3)
+            self.scan_item_action.setEnabled(bool(path and os.path.isdir(path)))
             self.single_context_menu.exec(tree.viewport().mapToGlobal(pos))
         else:
             self.multi_context_menu.exec(tree.viewport().mapToGlobal(pos))
@@ -5702,7 +5994,7 @@ class MdfindApp(QMainWindow):
         """Apply modern styling to dialog boxes based on current theme"""
         if self.dark_mode:
             dialog.setStyleSheet("""
-                QDialog, QMessageBox, QInputDialog {
+                QDialog, QMessageBox, QInputDialog, QProgressDialog {
                     background-color: #2d2d30;
                     color: #d4d4d4;
                     border: 1px solid #404040;
@@ -5726,6 +6018,15 @@ class MdfindApp(QMainWindow):
                     border: 1px solid #1177bb;
                     background-color: #252525;
                 }
+                QProgressDialog QLabel {
+                    margin-bottom: 8px;
+                }
+                QProgressDialog QProgressBar {
+                    min-height: 24px;
+                    border-radius: 6px;
+                    margin-top: 0px;
+                    margin-bottom: 50px;
+                }
                 QPushButton {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                         stop: 0 #0e4775, stop: 1 #0a3d66);
@@ -5744,6 +6045,11 @@ class MdfindApp(QMainWindow):
                 QPushButton:pressed {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                         stop: 0 #083d5c, stop: 1 #062d43);
+                }
+                QProgressDialog QPushButton {
+                    margin-top: 18px;
+                    padding: 6px 16px;
+                    min-width: 110px;
                 }
                 QMessageBox QLabel#qt_msgbox_label {
                     color: #d4d4d4;
@@ -5768,7 +6074,7 @@ class MdfindApp(QMainWindow):
                     dialog.setIconPixmap(self.create_dialog_icon("ℹ️", "#4a9eff"))
         else:
             dialog.setStyleSheet("""
-                QDialog, QMessageBox, QInputDialog {
+                QDialog, QMessageBox, QInputDialog, QProgressDialog {
                     background-color: #ffffff;
                     color: #24292f;
                     border: 1px solid #d1d9e0;
@@ -5792,6 +6098,15 @@ class MdfindApp(QMainWindow):
                     border: 1px solid #0969da;
                     background-color: #f6f8fa;
                 }
+                QProgressDialog QLabel {
+                    margin-bottom: 8px;
+                }
+                QProgressDialog QProgressBar {
+                    min-height: 24px;
+                    border-radius: 6px;
+                    margin-top: 0px;
+                    margin-bottom: 50px;
+                }
                 QPushButton {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                         stop: 0 #2ea043, stop: 1 #238636);
@@ -5810,6 +6125,11 @@ class MdfindApp(QMainWindow):
                 QPushButton:pressed {
                     background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
                         stop: 0 #238636, stop: 1 #196c2e);
+                }
+                QProgressDialog QPushButton {
+                    margin-top: 18px;
+                    padding: 6px 16px;
+                    min-width: 110px;
                 }
             """)
 
@@ -5881,21 +6201,39 @@ class MdfindApp(QMainWindow):
             self.update_tab_style()
     
     def closeEvent(self, event):
-        # Save pinned tabs before closing
-        self.save_pinned_tabs()
-        
-        # Clean up all tabs to prevent crashes
-        for index in list(self.search_tabs.keys()):
-            self.close_tab(index)
-        
-        # Stop media player
-        if hasattr(self, 'player_manager'):
-            self.player_manager.stop()
-        
-        config = read_config()
-        config["window_size"] = {"width": self.width(), "height": self.height()}
-        write_config(config)
-        super().closeEvent(event)
+        try:
+            self.save_pinned_tabs()
+
+            # Clean up all tabs to prevent crashes
+            for index in list(self.search_tabs.keys()):
+                self.close_tab(index)
+
+            # Stop media player
+            if hasattr(self, 'player_manager'):
+                self.player_manager.stop()
+
+            if self.scan_worker and self.scan_worker.isRunning():
+                self.scan_worker.stop()
+                self.scan_worker.wait(3000)
+        except KeyboardInterrupt:
+            print("Close interrupted by user.")
+        except Exception as exc:
+            print(f"Error while closing application: {exc}")
+            traceback.print_exc()
+        finally:
+            try:
+                self._close_scan_dialog()
+            except Exception:
+                pass
+
+            try:
+                config = read_config()
+                config["window_size"] = {"width": self.width(), "height": self.height()}
+                write_config(config)
+            except Exception as cfg_exc:
+                print(f"Failed to save window size: {cfg_exc}")
+
+            super().closeEvent(event)
             
     # === Updated bookmark methods ===
     def bookmark_large_files(self):
