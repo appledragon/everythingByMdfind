@@ -1270,7 +1270,7 @@ class MdfindApp(QMainWindow):
         btn_select_dir = QPushButton("📂 Select Dir")
         btn_select_dir.clicked.connect(self.select_directory)
 
-        self.scan_home_button = QPushButton("🏠 Scan Home Usage")
+        self.scan_home_button = QPushButton("🏠 Analyze Home Space")
         self.scan_home_button.clicked.connect(self.start_directory_scan)
 
         form_layout2.addWidget(lbl_dir)
@@ -1599,7 +1599,7 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addAction("📁 Copy path without file name", self.copy_path_only)
         self.single_context_menu.addAction("📝 Copy file name only", self.copy_file_name_only)
         self.single_context_menu.addSeparator()
-        self.scan_item_action = self.single_context_menu.addAction("📁 Scan Folder Usage", self.scan_selected_tree_item)
+        self.scan_item_action = self.single_context_menu.addAction("📁 Analyze Folder Space", self.scan_selected_tree_item)
         self.scan_item_action.setEnabled(False)
         self.single_context_menu.addSeparator()
         self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
@@ -1623,8 +1623,8 @@ class MdfindApp(QMainWindow):
         self.scan_processed_dirs = 0
         self.scan_root_display = ""
         self.scan_dialog = None
-        self.scan_context_label = "Home Usage Scan"
-        self.scan_tab_prefix = "Home Usage"
+        self.scan_context_label = "Home Space Analysis"
+        self.scan_tab_prefix = "Home Space"
 
         # Create the standalone player window but don't show it yet
         self.standalone_player = StandalonePlayerWindow(self)
@@ -1986,7 +1986,7 @@ class MdfindApp(QMainWindow):
         """Trigger a usage scan for the folder selected in the tab's tree"""
         selected_path = getattr(self, "context_menu_selected_dir", None)
         if not selected_path or not os.path.isdir(selected_path):
-            self.show_info("Folder Usage Scan", "Please select a folder in the tab first.")
+            self.show_info("Folder Space Analysis", "Please select a folder in the tab first.")
             return
 
         # Switch to the tab where the context menu was opened
@@ -1999,7 +1999,7 @@ class MdfindApp(QMainWindow):
         """Trigger a usage scan for the folder selected inside the current tab tree"""
         tree = self.get_current_tree()
         if not tree:
-            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            self.show_info("Folder Space Analysis", "Please select a folder first.")
             return
 
         try:
@@ -2008,12 +2008,12 @@ class MdfindApp(QMainWindow):
             selected_items = []
 
         if not selected_items:
-            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            self.show_info("Folder Space Analysis", "Please select a folder first.")
             return
 
         path = selected_items[0].text(3)
         if not path or not os.path.isdir(path):
-            self.show_info("Folder Usage Scan", "Please select a folder first.")
+            self.show_info("Folder Space Analysis", "Please select a folder first.")
             return
 
         self.start_directory_scan(Path(path))
@@ -2662,13 +2662,13 @@ class MdfindApp(QMainWindow):
 
         if target_path is None:
             scan_path = Path.home()
-            self.scan_context_label = "Home Usage Scan"
-            self.scan_tab_prefix = "Home Usage"
+            self.scan_context_label = "Home Space Analysis"
+            self.scan_tab_prefix = "Home Space"
         else:
             scan_path = Path(target_path)
             folder_label = scan_path.name or str(scan_path)
-            self.scan_context_label = f"Folder Usage Scan ({folder_label})"
-            self.scan_tab_prefix = f"{folder_label} Usage"
+            self.scan_context_label = f"Folder Space Analysis ({folder_label})"
+            self.scan_tab_prefix = f"{folder_label} Space"
 
         if not scan_path.is_dir():
             self.show_error(f"Directory scan failed: {scan_path} is not a directory.")

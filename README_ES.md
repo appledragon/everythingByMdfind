@@ -34,6 +34,12 @@ Una herramienta de búsqueda de archivos potente y eficiente para macOS, que apr
     *   Imágenes
     *   Archivos comprimidos
     *   Aplicaciones
+*   **Análisis de espacio en disco:** Analice el uso del espacio en disco para cualquier directorio:
+    *   Análisis de espacio del directorio de inicio con un clic
+    *   Visualización de gráfico de barras interactivo que muestra las carpetas que más espacio consumen
+    *   Haga clic derecho en cualquier carpeta de los resultados de búsqueda para analizar su uso de espacio
+    *   Desglose visual de los tamaños de subdirectorios con gráficos codificados por colores
+    *   Ordenación automática por tamaño para identificar las carpetas más grandes
 *   **Resultados ordenables:** Organice los resultados de búsqueda por nombre, tamaño, fecha de modificación o ruta.
 *   **Operaciones con múltiples archivos:** Realice acciones en varios archivos simultáneamente:
     *   Seleccione varios archivos usando las teclas Shift o Command (⌘)
