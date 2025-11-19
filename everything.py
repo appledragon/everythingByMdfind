@@ -30,12 +30,22 @@ from PyQt6.QtWidgets import (
     QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget, QDialog, QRadioButton, QButtonGroup,
     QProgressDialog
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QActionGroup
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve, QMargins
+from PyQt6.QtGui import QActionGroup, QBrush
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont, QColor
 from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtCharts import (
+    QChart,
+    QChartView,
+    QBarSet,
+    QBarSeries,
+    QHorizontalBarSeries,
+    QBarCategoryAxis,
+    QValueAxis,
+    QAbstractBarSeries,
+)
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
 DEBOUNCE_DELAY = 800
@@ -611,6 +621,8 @@ class SearchTab:
         self.file_data = []
         self.current_loaded = 0
         self.items_found_count = 0  # Store the number of items found for this tab
+        self.scan_chart_data = []  # Usage scan visualization cache
+        self.scan_chart_title = ""
         
         # Create the tree widget for this tab
         self.tree = DraggableTreeWidget()
@@ -1401,6 +1413,34 @@ class MdfindApp(QMainWindow):
         header_layout.addWidget(close_button)
         
         preview_layout.addLayout(header_layout)
+
+        # Interactive usage chart (hidden until a scan runs)
+        self.scan_chart = QChart()
+        self.scan_chart.legend().setVisible(True)
+        self.scan_chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+        self.scan_chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        self.scan_chart.setMargins(QMargins(24, 18, 32, 24))
+        self.scan_chart.setBackgroundRoundness(12)
+        self.scan_chart_view = QChartView(self.scan_chart)
+        self.scan_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.scan_chart_view.setMinimumHeight(420)
+        self.scan_chart_view.setVisible(False)
+        self.scan_chart_view.setObjectName("scanChartView")
+        self.scan_chart_view.setStyleSheet(
+            "QChartView#scanChartView {"
+            "  border: 1px solid rgba(0, 0, 0, 0.15);"
+            "  border-radius: 14px;"
+            "  background: rgba(0, 0, 0, 0.01);"
+            "  padding: 12px;"
+            "}"
+        )
+        preview_layout.addWidget(self.scan_chart_view)
+        self._current_scan_series = None
+        self.scan_chart_path_map = {}
+        self.scan_chart_categories = []
+        self.scan_chart_tab_index = None
+        self._update_scan_chart_theme()
+        self._chart_overrides_preview = False
         
         # Create vertical splitter for preview (top) and metadata (bottom)
         self.preview_splitter = QSplitter(Qt.Orientation.Vertical)
@@ -1758,6 +1798,9 @@ class MdfindApp(QMainWindow):
             # Update tab widths after closing
             if self.tab_widget.count() > 0:
                 self.update_tab_style()
+                self._update_scan_chart_for_tab()
+            else:
+                self._clear_scan_chart()
     
     def on_tab_changed(self, index):
         """Handle tab change event"""
@@ -1820,9 +1863,11 @@ class MdfindApp(QMainWindow):
             
             # Update all tab close buttons since current tab changed
             self.update_all_tab_close_buttons()
+            self._update_scan_chart_for_tab()
         else:
             # No tabs available (index < 0), reset items found label
             self.lbl_items_found.setText("📊 0 items found")
+            self._clear_scan_chart()
     
     def show_tab_context_menu(self, pos):
         """Show context menu for tabs"""
@@ -2079,6 +2124,7 @@ class MdfindApp(QMainWindow):
         
         # Update all tab styling
         self.update_tab_style()
+        self._update_scan_chart_for_tab()
     
     def get_pinned_count(self):
         """Get the number of currently pinned tabs"""
@@ -2755,9 +2801,189 @@ class MdfindApp(QMainWindow):
         scan_tab.file_data = enriched
         scan_tab.current_loaded = 0
         scan_tab.items_found_count = len(enriched)
+        scan_tab.scan_chart_data = enriched
+        scan_tab.scan_chart_title = root_path
         while scan_tab.current_loaded < len(enriched):
             self.load_more_items(scan_tab)
         self.lbl_items_found.setText(f"📊 {len(enriched)} items found")
+
+        self._ensure_preview_visible()
+        self._populate_scan_chart(scan_tab, self.tab_widget.currentIndex())
+
+    # ========== Scan preview helpers ==========
+    def _ensure_preview_visible(self):
+        """Force preview pane open when visualization is required."""
+        if self.preview_container.isVisible():
+            return
+        if hasattr(self, 'toggle_preview_action'):
+            self.toggle_preview_action.setChecked(True)
+        self.toggle_preview(True)
+
+    def _set_preview_widgets_hidden_for_chart(self, hide):
+        self._chart_overrides_preview = hide
+        target_visible = not hide
+        if hasattr(self, 'preview_stack'):
+            self.preview_stack.setVisible(target_visible)
+        if hasattr(self, 'media_info'):
+            self.media_info.setVisible(target_visible)
+
+    def _clear_scan_chart(self):
+        if not hasattr(self, 'scan_chart_view'):
+            return
+        if self._current_scan_series:
+            try:
+                self._current_scan_series.clicked.disconnect(self.on_scan_chart_bar_clicked)
+            except (TypeError, RuntimeError):
+                pass
+            self._current_scan_series = None
+        self.scan_chart.removeAllSeries()
+        self.scan_chart_view.setVisible(False)
+        self.scan_chart_path_map.clear()
+        self.scan_chart_categories = []
+        self.scan_chart_tab_index = None
+        self._set_preview_widgets_hidden_for_chart(False)
+
+    def _populate_scan_chart(self, scan_tab, tab_index):
+        if not hasattr(self, 'scan_chart_view'):
+            return
+
+        data = getattr(scan_tab, 'scan_chart_data', []) or []
+        if not data:
+            self._clear_scan_chart()
+            return
+
+        sorted_data = sorted(data, key=lambda item: item[1], reverse=True)
+        total_size = sum(item[1] for item in sorted_data)
+
+        if self._current_scan_series:
+            try:
+                self._current_scan_series.clicked.disconnect(self.on_scan_chart_bar_clicked)
+            except (TypeError, RuntimeError):
+                pass
+            self._current_scan_series = None
+        self.scan_chart.removeAllSeries()
+        self.scan_chart_path_map.clear()
+
+        bar_limit = 10
+        top_entries = sorted_data[:bar_limit]
+        remaining = sorted_data[bar_limit:]
+        others_size = sum(item[1] for item in remaining)
+        entries = top_entries[:]
+        if others_size > 0:
+            entries.append(("Others", others_size, 0, None))
+
+        categories = []
+        values = []
+        divisor = 1024 ** 3  # show GB
+        min_display_value = 0.01
+
+        for idx, (name, size, _mtime, path) in enumerate(entries):
+            categories.append(name)
+            size_gb = size / divisor if size else 0
+            display_value = max(size_gb, min_display_value if size > 0 else 0)
+            values.append(display_value)
+            self.scan_chart_path_map[idx] = path
+
+        self.scan_chart_categories = categories
+
+        series = QHorizontalBarSeries()
+        bar_set = QBarSet("Size (GB)")
+        for value in values:
+            bar_set.append(value)
+        series.append(bar_set)
+        series.setLabelsVisible(True)
+        series.setLabelsFormat("@value GB")
+        series.setBarWidth(0.78)
+        series.clicked.connect(self.on_scan_chart_bar_clicked)
+        try:
+            series.setColorByPoint(True)
+            series.setLabelsPosition(QAbstractBarSeries.LabelPosition.OutsideEnd)
+        except AttributeError:
+            pass
+
+        self.scan_chart.addSeries(series)
+
+        for axis in list(self.scan_chart.axes()):
+            self.scan_chart.removeAxis(axis)
+
+        axis_font = QFont()
+        axis_font.setPointSize(11)
+        axis_x = QValueAxis()
+        axis_x.setTitleText("Size (GB)")
+        axis_x.setLabelFormat("%.2f")
+        if values:
+            axis_x.setMax(max(values) * 1.15)
+        axis_x.setLabelsFont(axis_font)
+        axis_x.setTitleFont(axis_font)
+
+        axis_y = QBarCategoryAxis()
+        axis_y.append(categories)
+        axis_y.setTitleText("Directory")
+        axis_y.setLabelsFont(axis_font)
+        axis_y.setTitleFont(axis_font)
+
+        self.scan_chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.scan_chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(axis_x)
+        series.attachAxis(axis_y)
+
+        self._current_scan_series = series
+        title = scan_tab.scan_chart_title or scan_tab.tab_title or "Usage Scan"
+        total_text = format_size(total_size) if total_size else "0 B"
+        self.scan_chart.setTitle(f"{title} — Total {total_text}")
+        title_font = self.scan_chart.titleFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        self.scan_chart.setTitleFont(title_font)
+        self.scan_chart_view.setVisible(True)
+        self.scan_chart_tab_index = tab_index
+        self.scan_chart.legend().setVisible(False)
+        self._set_preview_widgets_hidden_for_chart(True)
+
+    def _update_scan_chart_for_tab(self):
+        if not hasattr(self, 'scan_chart_view'):
+            return
+        current_index = self.tab_widget.currentIndex()
+        current_tab = self.search_tabs.get(current_index)
+        if current_tab and current_tab.is_scan_tab and getattr(current_tab, 'scan_chart_data', None):
+            self._populate_scan_chart(current_tab, current_index)
+        else:
+            self._clear_scan_chart()
+
+    def _update_scan_chart_theme(self):
+        if not hasattr(self, 'scan_chart'):
+            return
+        bg = QColor("#1a1b26" if self.dark_mode else "#ffffff")
+        fg = QColor("#c0caf5" if self.dark_mode else "#24292f")
+        self.scan_chart.setBackgroundBrush(QBrush(bg))
+        self.scan_chart.setTitleBrush(QBrush(fg))
+        legend = self.scan_chart.legend()
+        legend.setLabelColor(fg)
+        for axis in self.scan_chart.axes():
+            axis.setLabelsBrush(QBrush(fg))
+            axis.setTitleBrush(QBrush(fg))
+
+    def on_scan_chart_bar_clicked(self, index, bar_set):
+        target_path = self.scan_chart_path_map.get(index)
+        if not target_path:
+            return
+        if self.scan_chart_tab_index is None:
+            return
+        if self.scan_chart_tab_index >= self.tab_widget.count():
+            return
+        self.tab_widget.setCurrentIndex(self.scan_chart_tab_index)
+        tab = self.search_tabs.get(self.scan_chart_tab_index)
+        if not tab:
+            return
+        tree = tab.tree
+        if not tree:
+            return
+        for row in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(row)
+            if item.text(3) == target_path:
+                tree.setCurrentItem(item)
+                tree.scrollToItem(item)
+                break
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
@@ -3679,6 +3905,11 @@ class MdfindApp(QMainWindow):
 
     def toggle_preview(self, checked):
         self.preview_container.setVisible(checked)
+        if checked and getattr(self, '_chart_overrides_preview', False):
+            if hasattr(self, 'preview_stack'):
+                self.preview_stack.setVisible(False)
+            if hasattr(self, 'media_info'):
+                self.media_info.setVisible(False)
         # Save preview state to config
         self.preview_enabled = checked
         cfg = read_config()
@@ -4295,6 +4526,7 @@ class MdfindApp(QMainWindow):
         # Update tab widget style and close buttons if tab_widget exists
         if hasattr(self, 'tab_widget'):
             self.update_tab_style()
+        self._update_scan_chart_theme()
     
     def set_dark_mode(self):
         self.setStyleSheet("""
@@ -4926,6 +5158,7 @@ class MdfindApp(QMainWindow):
         
         # Update titlebar to match the applied theme
         self.update_titlebar_for_theme()
+        self._update_scan_chart_theme()
 
     def set_theme(self, theme_mode):
         """Set the theme mode and apply it"""
@@ -5432,6 +5665,7 @@ class MdfindApp(QMainWindow):
         # Update tab widget style if it exists
         if hasattr(self, 'tab_widget'):
             self.update_tab_style()
+        self._update_scan_chart_theme()
 
     def set_tokyo_night_storm_mode(self):
         """Set Tokyo Night Storm theme (darker variant)"""
@@ -5968,6 +6202,7 @@ class MdfindApp(QMainWindow):
         cfg["dark_mode"] = checked
         write_config(cfg)
         self.dark_mode = checked
+        self._update_scan_chart_theme()
         
     def toggle_history(self, checked):
         self.history_enabled = checked
