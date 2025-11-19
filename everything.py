@@ -770,13 +770,22 @@ class DirectoryScanWorker(QThread):
 
     def _get_directory_size(self, entry):
         try:
-            output = subprocess.check_output(
+            completed = subprocess.run(
                 ["du", "-skxP", str(entry)],
-                stderr=subprocess.DEVNULL
-            ).split()[0]
-            return int(output) * 1024
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            stdout = completed.stdout.decode(errors="ignore").strip()
+            if stdout:
+                last_line = stdout.splitlines()[-1]
+                first_token = last_line.split()[0]
+                return int(first_token) * 1024
+        except (ValueError, IndexError, FileNotFoundError, PermissionError):
+            return 0
         except Exception:
             return 0
+        return 0
 
     def stop(self):
         self._is_running = False
