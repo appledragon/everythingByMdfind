@@ -1092,6 +1092,7 @@ class MdfindApp(QMainWindow):
         self.history_enabled = config.get("history_enabled", True)
         self.preview_enabled = config.get("preview_enabled", False) 
         self.continuous_playback = config.get("continuous_playback", False)
+        self.simple_mode = config.get("simple_mode", False)  # Simple/Advanced UI toggle
         
         # Keep backward compatibility with old dark_mode setting
         if "dark_mode" in config and "theme_mode" not in config:
@@ -1138,6 +1139,15 @@ class MdfindApp(QMainWindow):
 
         # Add a "View" menu
         view_menu = menubar.addMenu('👀 View')
+        
+        # Simple Mode toggle
+        simple_mode_action = view_menu.addAction('✨ Simple Mode')
+        simple_mode_action.setCheckable(True)
+        simple_mode_action.setChecked(self.simple_mode)
+        simple_mode_action.triggered.connect(self.toggle_simple_mode)
+        self.simple_mode_action = simple_mode_action
+        view_menu.addSeparator()
+        
         toggle_preview_action = view_menu.addAction('👁️ Toggle Preview')
         toggle_preview_action.setCheckable(True)
         toggle_preview_action.setChecked(self.preview_enabled) # Use the loaded setting instead of hardcoded False
@@ -1260,7 +1270,9 @@ class MdfindApp(QMainWindow):
         left_layout.addLayout(form_layout)
 
         # Second row: Directory selection (optional)
-        form_layout2 = QHBoxLayout()
+        self.dir_row_widget = QWidget()
+        form_layout2 = QHBoxLayout(self.dir_row_widget)
+        form_layout2.setContentsMargins(0, 0, 0, 0)
         lbl_dir = QLabel("📁 Directory (optional):")
         lbl_dir.setObjectName("directoryLabel")
         
@@ -1277,10 +1289,21 @@ class MdfindApp(QMainWindow):
         form_layout2.addWidget(self.edit_dir, 3)
         form_layout2.addWidget(btn_select_dir, 1)
         form_layout2.addWidget(self.scan_home_button, 1)
-        left_layout.addLayout(form_layout2)
+        left_layout.addWidget(self.dir_row_widget)
 
-        # Advanced Filters group
-        group_advanced = QGroupBox("⚙️ Advanced Filters")
+        # Advanced Filters group with collapse toggle
+        filter_header_layout = QHBoxLayout()
+        self.filter_toggle_btn = QPushButton("▼ Advanced Filters")
+        self.filter_toggle_btn.setFlat(True)
+        self.filter_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.filter_toggle_btn.clicked.connect(self.toggle_filters)
+        self.filter_toggle_btn.setStyleSheet("text-align: left; padding: 5px;")
+        filter_header_layout.addWidget(self.filter_toggle_btn)
+        filter_header_layout.addStretch()
+        left_layout.addLayout(filter_header_layout)
+        
+        group_advanced = QGroupBox()
+        group_advanced.setObjectName("advancedFiltersGroup")
         adv_layout = QHBoxLayout()
 
         lbl_min_size = QLabel("📏 Min Size (bytes):")
@@ -1308,6 +1331,7 @@ class MdfindApp(QMainWindow):
         adv_layout.addWidget(self.chk_full_match, 3)
 
         group_advanced.setLayout(adv_layout)
+        self.group_advanced = group_advanced
         left_layout.addWidget(group_advanced)
 
         # Search results tabs
@@ -1656,6 +1680,16 @@ class MdfindApp(QMainWindow):
         
         # Restore pinned tabs from previous session
         self.restore_pinned_tabs()
+        
+        # Apply simple mode settings on startup
+        if self.simple_mode:
+            self.dir_row_widget.hide()
+            self.group_advanced.hide()
+            self.filter_toggle_btn.hide()
+        else:
+            # In advanced mode, start with filters collapsed
+            self.group_advanced.hide()
+            self.filter_toggle_btn.setText("▶ Advanced Filters")
         
     # ========== Tab Management ==========
     def get_current_tree(self):
@@ -6775,6 +6809,44 @@ class MdfindApp(QMainWindow):
             self.search_timer.stop()
             # Execute search immediately
             self.start_search()
+    
+    def toggle_simple_mode(self, checked):
+        """Toggle between simple and advanced UI mode"""
+        self.simple_mode = checked
+        
+        if self.simple_mode:
+            # Simple mode: hide advanced features
+            self.dir_row_widget.hide()
+            self.group_advanced.hide()
+            self.filter_toggle_btn.hide()
+            
+            # Hide some menu items
+            self.menuBar().findChild(QMenu, None, Qt.FindChildOption.FindDirectChildrenOnly)
+            
+            # Make window more compact
+            if self.height() > 700:
+                self.resize(self.width(), 700)
+        else:
+            # Advanced mode: show all features
+            self.dir_row_widget.show()
+            self.filter_toggle_btn.show()
+            # Keep advanced filters state as it was
+            
+        # Save preference
+        config = read_config()
+        config["simple_mode"] = self.simple_mode
+        write_config(config)
+    
+    def toggle_filters(self):
+        """Toggle visibility of advanced filters"""
+        is_visible = self.group_advanced.isVisible()
+        self.group_advanced.setVisible(not is_visible)
+        
+        # Update button text
+        if is_visible:
+            self.filter_toggle_btn.setText("▶ Advanced Filters")
+        else:
+            self.filter_toggle_btn.setText("▼ Advanced Filters")
             
 if __name__ == "__main__":
     app = QApplication(sys.argv)
