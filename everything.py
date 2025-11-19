@@ -587,7 +587,7 @@ def format_size(size):
 # Class to manage individual search tabs
 class SearchTab:
     """Manages the data and widgets for a single search tab"""
-    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions="", is_pinned=False, tab_title="", extra_clause=None, is_bookmark=False):
+    def __init__(self, query="", directory="", file_name_search=True, match_case=False, full_match=False, min_size="", max_size="", extensions="", is_pinned=False, tab_title="", extra_clause=None, is_bookmark=False, is_scan_tab=False):
         self.query = query
         self.directory = directory
         self.file_name_search = file_name_search
@@ -600,6 +600,7 @@ class SearchTab:
         # Pin state
         self.is_pinned = is_pinned
         self.tab_title = tab_title  # Store original tab title
+        self.is_scan_tab = is_scan_tab
         
         # Bookmark search fields
         self.extra_clause = extra_clause
@@ -1109,8 +1110,6 @@ class MdfindApp(QMainWindow):
         file_menu = menubar.addMenu('📁 File')
         export_action = file_menu.addAction('📤 Export Results...')
         export_action.triggered.connect(self.export_results)
-        self.scan_home_action = file_menu.addAction('🏠 Scan Home Usage')
-        self.scan_home_action.triggered.connect(self.start_directory_scan)
         export_action.setShortcut('Ctrl+E')
         
         help_menu = menubar.addMenu('❓ Help')
@@ -1259,9 +1258,13 @@ class MdfindApp(QMainWindow):
         btn_select_dir = QPushButton("📂 Select Dir")
         btn_select_dir.clicked.connect(self.select_directory)
 
+        self.scan_home_button = QPushButton("🏠 Scan Home Usage")
+        self.scan_home_button.clicked.connect(self.start_directory_scan)
+
         form_layout2.addWidget(lbl_dir)
-        form_layout2.addWidget(self.edit_dir, 4)
+        form_layout2.addWidget(self.edit_dir, 3)
         form_layout2.addWidget(btn_select_dir, 1)
+        form_layout2.addWidget(self.scan_home_button, 1)
         left_layout.addLayout(form_layout2)
 
         # Advanced Filters group
@@ -1640,7 +1643,7 @@ class MdfindApp(QMainWindow):
             return None
         return self.search_tabs[current_index]
     
-    def create_new_tab(self, query="", directory="", tab_title="", extra_clause=None, is_bookmark=False, force_parameters=False):
+    def create_new_tab(self, query="", directory="", tab_title="", extra_clause=None, is_bookmark=False, force_parameters=False, is_scan_tab=False):
         """Create a new search tab"""
         if force_parameters:
             search_query = query
@@ -1661,7 +1664,8 @@ class MdfindApp(QMainWindow):
             extensions=self.edit_extension.text().strip(),
             tab_title=tab_title,
             extra_clause=extra_clause,
-            is_bookmark=is_bookmark  # Store the original title
+            is_bookmark=is_bookmark,
+            is_scan_tab=is_scan_tab  # Store the original title
         )
         
         # Apply default sort settings
@@ -1831,10 +1835,17 @@ class MdfindApp(QMainWindow):
         if self.context_menu_tab_index >= 0:
             # Update pin action text based on current pin state
             tab = self.search_tabs.get(self.context_menu_tab_index)
-            if tab and tab.is_pinned:
+            if tab and tab.is_pinned and not tab.is_scan_tab:
                 self.pin_action.setText("📍 Unpin Tab")
             else:
                 self.pin_action.setText("📌 Pin Tab")
+
+            can_toggle_pin = bool(tab) and (tab.is_pinned or not tab.is_scan_tab)
+            self.pin_action.setEnabled(can_toggle_pin)
+            if tab and tab.is_scan_tab and not tab.is_pinned:
+                self.pin_action.setToolTip("Usage scan tabs cannot be pinned.")
+            else:
+                self.pin_action.setToolTip("")
 
             # Determine if a directory is selected in this tab's tree
             self.context_menu_selected_dir = None
@@ -1971,6 +1982,10 @@ class MdfindApp(QMainWindow):
             if not tab:
                 return
             
+            if tab.is_scan_tab and not tab.is_pinned:
+                self.show_info("Pin Unavailable", "Usage scan result tabs cannot be pinned.")
+                return
+
             if tab.is_pinned:
                 self.unpin_tab(index)
             else:
@@ -1982,6 +1997,10 @@ class MdfindApp(QMainWindow):
             return
         
         tab = self.search_tabs[index]
+
+        if tab.is_scan_tab:
+            self.show_info("Pin Unavailable", "Usage scan result tabs cannot be pinned.")
+            return
         
         # Check if we've reached the maximum number of pinned tabs
         pinned_count = sum(1 for t in self.search_tabs.values() if t.is_pinned)
@@ -2630,8 +2649,8 @@ class MdfindApp(QMainWindow):
             f"Scanning {self.scan_root_display}\n0/{self.scan_total_dirs} folders processed"
         )
 
-        if hasattr(self, 'scan_home_action'):
-            self.scan_home_action.setEnabled(False)
+        if hasattr(self, 'scan_home_button'):
+            self.scan_home_button.setEnabled(False)
 
         self.scan_worker = DirectoryScanWorker(scan_path, entries=entries)
         self.scan_worker.progress_signal.connect(self.on_scan_progress)
@@ -2667,8 +2686,6 @@ class MdfindApp(QMainWindow):
 
     def on_scan_cancelled(self):
         self._close_scan_dialog()
-        message = f"Scan cancelled after {self.scan_processed_dirs}/{self.scan_total_dirs} folders."
-        self.show_info(self.scan_context_label, message)
         self._reset_scan_state()
 
     def on_scan_error(self, message):
@@ -2699,8 +2716,8 @@ class MdfindApp(QMainWindow):
             self.scan_dialog = None
 
     def _reset_scan_state(self):
-        if hasattr(self, 'scan_home_action'):
-            self.scan_home_action.setEnabled(True)
+        if hasattr(self, 'scan_home_button'):
+            self.scan_home_button.setEnabled(True)
         self.progress.setValue(0)
         self.scan_root_display = ""
         self.scan_total_dirs = 0
@@ -2719,7 +2736,8 @@ class MdfindApp(QMainWindow):
             tab_title=tab_title,
             extra_clause=None,
             is_bookmark=False,
-            force_parameters=True
+            force_parameters=True,
+            is_scan_tab=True
         )
         scan_tab.query = ""
         sorted_results = sorted(results, key=lambda item: item[1], reverse=True)
@@ -2740,7 +2758,6 @@ class MdfindApp(QMainWindow):
         while scan_tab.current_loaded < len(enriched):
             self.load_more_items(scan_tab)
         self.lbl_items_found.setText(f"📊 {len(enriched)} items found")
-        self.show_info(self.scan_context_label, f"Results opened in tab '{tab_title}'.")
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
