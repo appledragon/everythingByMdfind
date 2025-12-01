@@ -3156,6 +3156,9 @@ class MdfindApp(QMainWindow):
                 self.chart_back_button.setVisible(len(self.scan_chart_nav_stack) > 0)
             else:
                 self.chart_nav_container.setVisible(False)
+        
+        # Apply current theme colors to chart axes
+        self._update_scan_chart_theme()
 
     def _update_scan_chart_for_tab(self):
         if not hasattr(self, 'scan_chart_view'):
@@ -3164,6 +3167,8 @@ class MdfindApp(QMainWindow):
         current_tab = self.search_tabs.get(current_index)
         if current_tab and current_tab.is_scan_tab and getattr(current_tab, 'scan_chart_data', None):
             self._populate_scan_chart(current_tab, current_index)
+            # Ensure theme is applied after populating
+            self._update_scan_chart_theme()
         else:
             self._clear_scan_chart()
 
@@ -3277,49 +3282,74 @@ class MdfindApp(QMainWindow):
             self.show_info("No Subdirectories", f"No accessible subdirectories found in:\n{target_path}")
             return
         
-        # Update chart with subdirectories
-        if self.scan_chart_tab_index is not None:
-            tab = self.search_tabs.get(self.scan_chart_tab_index)
-            if tab and hasattr(self, 'subdir_scan_target'):
-                # Convert to format: (name, size, mtime, path)
-                chart_data = []
+        if not hasattr(self, 'subdir_scan_target'):
+            return
+        
+        # Convert to format: (name, size, mtime, path)
+        chart_data = []
+        for name, size, path in subdirs:
+            try:
+                mtime = path.stat().st_mtime if path.exists() else 0
+            except:
+                mtime = 0
+            chart_data.append((name, size, mtime, str(path)))
+        
+        # Create a new tab for the subdirectory
+        target_path = str(self.subdir_scan_target)
+        tab_title = f"📊 {self.subdir_scan_target.name}"
+        
+        new_tab = self.create_new_tab(
+            query="",
+            directory="",
+            tab_title=tab_title,
+            is_scan_tab=True
+        )
+        
+        # Set up the new tab with scan data
+        new_tab.scan_chart_data = chart_data
+        new_tab.scan_chart_title = f"{self.subdir_scan_target.name}"
+        new_tab.is_scan_tab = True
+        
+        # Get the new tab index
+        new_tab_index = None
+        for idx, tab in self.search_tabs.items():
+            if tab == new_tab:
+                new_tab_index = idx
+                break
+        
+        if new_tab_index is not None:
+            # Update global chart state to new tab
+            self.scan_chart_tab_index = new_tab_index
+            self.scan_chart_current_path = target_path
+            
+            # Populate chart in new tab
+            self._populate_scan_chart(new_tab, new_tab_index)
+            
+            # Update tab tree with subdirectories
+            tree = new_tab.tree
+            if tree:
+                tree.clear()
                 for name, size, path in subdirs:
+                    item = QTreeWidgetItem()
+                    item.setText(0, name)
+                    item.setText(1, format_size(size))
                     try:
                         mtime = path.stat().st_mtime if path.exists() else 0
+                        date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
                     except:
-                        mtime = 0
-                    chart_data.append((name, size, mtime, str(path)))
+                        date_str = ""
+                    item.setText(2, date_str)
+                    item.setText(3, str(path))
+                    tree.addTopLevelItem(item)
                 
-                tab.scan_chart_data = chart_data
-                tab.scan_chart_title = f"{self.subdir_scan_target.name}"
-                self.scan_chart_current_path = str(self.subdir_scan_target)
-                self._populate_scan_chart(tab, self.scan_chart_tab_index)
+                # Update tab metadata
+                new_tab.all_file_data = chart_data
+                new_tab.file_data = chart_data
+                new_tab.current_loaded = len(chart_data)
+                new_tab.items_found_count = len(chart_data)
                 
-                # Update tab tree with subdirectories
-                tree = tab.tree
-                if tree:
-                    tree.clear()
-                    for name, size, path in subdirs:
-                        item = QTreeWidgetItem()
-                        item.setText(0, name)
-                        item.setText(1, format_size(size))
-                        try:
-                            mtime = path.stat().st_mtime if path.exists() else 0
-                            date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
-                        except:
-                            date_str = ""
-                        item.setText(2, date_str)
-                        item.setText(3, str(path))
-                        tree.addTopLevelItem(item)
-                    
-                    # Update tab metadata
-                    tab.all_file_data = chart_data
-                    tab.file_data = chart_data
-                    tab.current_loaded = len(chart_data)
-                    tab.items_found_count = len(chart_data)
-                    
-                    # Update status label
-                    self.lbl_items_found.setText(f"📊 {len(chart_data)} items found")
+                # Update status label
+                self.lbl_items_found.setText(f"📊 {len(chart_data)} items found")
     
     def _on_subdir_scan_error(self, error_msg):
         """Handle subdirectory scan error"""
@@ -3346,14 +3376,81 @@ class MdfindApp(QMainWindow):
         
         # Pop previous state from stack
         prev_state = self.scan_chart_nav_stack.pop()
+        prev_path = prev_state['path']
         
-        if self.scan_chart_tab_index is not None:
-            tab = self.search_tabs.get(self.scan_chart_tab_index)
-            if tab:
-                tab.scan_chart_data = prev_state['data']
-                tab.scan_chart_title = prev_state['title']
-                self.scan_chart_current_path = prev_state['path']
-                self._populate_scan_chart(tab, self.scan_chart_tab_index)
+        # Check if a tab already exists for this path
+        existing_tab_index = None
+        for idx, tab in self.search_tabs.items():
+            if (hasattr(tab, 'is_scan_tab') and tab.is_scan_tab and 
+                hasattr(tab, 'scan_chart_data') and tab.scan_chart_data):
+                # Check if this tab's first item path matches the target path
+                if tab.scan_chart_data:
+                    first_item_path = str(Path(tab.scan_chart_data[0][3]).parent) if len(tab.scan_chart_data[0]) > 3 else None
+                    if first_item_path == prev_path:
+                        existing_tab_index = idx
+                        break
+        
+        if existing_tab_index is not None:
+            # Switch to existing tab
+            self.tab_widget.setCurrentIndex(existing_tab_index)
+            self.scan_chart_tab_index = existing_tab_index
+            self.scan_chart_current_path = prev_path
+        else:
+            # Create new tab for previous state
+            prev_path_obj = Path(prev_path)
+            tab_title = f"📊 {prev_path_obj.name or prev_path_obj}"
+            
+            new_tab = self.create_new_tab(
+                query="",
+                directory="",
+                tab_title=tab_title,
+                is_scan_tab=True
+            )
+            
+            # Set up the new tab with previous state data
+            new_tab.scan_chart_data = prev_state['data']
+            new_tab.scan_chart_title = prev_state['title']
+            new_tab.is_scan_tab = True
+            
+            # Get the new tab index
+            new_tab_index = None
+            for idx, tab in self.search_tabs.items():
+                if tab == new_tab:
+                    new_tab_index = idx
+                    break
+            
+            if new_tab_index is not None:
+                # Update global chart state
+                self.scan_chart_tab_index = new_tab_index
+                self.scan_chart_current_path = prev_path
+                
+                # Populate chart in new tab
+                self._populate_scan_chart(new_tab, new_tab_index)
+                
+                # Update tab tree with data
+                tree = new_tab.tree
+                if tree:
+                    tree.clear()
+                    for item_data in prev_state['data']:
+                        item = QTreeWidgetItem()
+                        item.setText(0, item_data[0])  # name
+                        item.setText(1, format_size(item_data[1]))  # size
+                        try:
+                            date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item_data[2]))
+                        except:
+                            date_str = ""
+                        item.setText(2, date_str)  # mtime
+                        item.setText(3, item_data[3])  # path
+                        tree.addTopLevelItem(item)
+                    
+                    # Update tab metadata
+                    new_tab.all_file_data = prev_state['data']
+                    new_tab.file_data = prev_state['data']
+                    new_tab.current_loaded = len(prev_state['data'])
+                    new_tab.items_found_count = len(prev_state['data'])
+                    
+                    # Update status label
+                    self.lbl_items_found.setText(f"📊 {len(prev_state['data'])} items found")
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
