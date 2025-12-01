@@ -34,6 +34,13 @@ Un outil de recherche de fichiers puissant et efficace pour macOS, exploitant le
     *   Images
     *   Archives
     *   Applications
+*   **Analyse de l'espace disque :** Analysez l'utilisation de l'espace disque pour n'importe quel répertoire :
+    *   Analyse de l'espace du répertoire personnel en un clic
+    *   Visualisation graphique interactive en barres montrant les dossiers consommant le plus d'espace
+    *   Cliquez avec le bouton droit sur n'importe quel dossier dans les résultats de recherche pour analyser son utilisation d'espace
+    *   Double-cliquez sur les barres du graphique pour explorer les sous-répertoires en détail
+    *   Répartition visuelle des tailles de sous-répertoires avec graphiques codés par couleur
+    *   Tri automatique par taille pour identifier les dossiers les plus volumineux
 *   **Résultats triables :** Organisez les résultats de recherche par nom, taille, date de modification ou chemin.
 *   **Opérations multi-fichiers :** Effectuez des actions sur plusieurs fichiers simultanément :
     *   Sélectionnez plusieurs fichiers à l'aide des touches Shift ou Command (⌘)
@@ -105,7 +112,7 @@ Apple Dragon
 
 ## Version
 
-1.3.7
+1.4.0
 
 ## Remerciements
 

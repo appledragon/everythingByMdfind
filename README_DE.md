@@ -34,6 +34,13 @@ Ein leistungsstarkes und effizientes Dateisuch-Tool für macOS, das die native S
     *   Bilder
     *   Archive
     *   Anwendungen
+*   **Festplattenspeicheranalyse:** Analysieren Sie die Festplattenspeichernutzung für jedes Verzeichnis:
+    *   Ein-Klick-Heimverzeichnis-Speicheranalyse
+    *   Interaktive Balkendiagramm-Visualisierung mit den Ordnern mit dem höchsten Speicherverbrauch
+    *   Klicken Sie mit der rechten Maustaste auf einen beliebigen Ordner in den Suchergebnissen, um dessen Speichernutzung zu analysieren
+    *   Doppelklicken Sie auf Diagrammbalken, um in Unterverzeichnisse für detaillierte Analysen zu gelangen
+    *   Visuelle Aufschlüsselung der Unterverzeichnisgrößen mit farbcodierten Diagrammen
+    *   Automatische Sortierung nach Größe zur Identifizierung der größten Ordner
 *   **Sortierbare Ergebnisse:** Organisieren Sie Suchergebnisse nach Name, Größe, Änderungsdatum oder Pfad.
 *   **Mehrfachdatei-Operationen:** Führen Sie Aktionen an mehreren Dateien gleichzeitig aus:
     *   Wählen Sie mehrere Dateien mit den Umschalt- oder Befehlstasten (⌘) aus
@@ -105,7 +112,7 @@ Apple Dragon
 
 ## Version
 
-1.3.7
+1.4.0
 
 ## Danksagungen
 
