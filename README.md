@@ -39,6 +39,7 @@ A powerful and efficient file search tool for macOS, leveraging the native Spotl
     *   One-click home directory space analysis
     *   Interactive bar chart visualization showing top space-consuming folders
     *   Right-click on any folder in search results to analyze its space usage
+    *   Double-click chart bars to drill down into subdirectories for detailed analysis
     *   Visual breakdown of subdirectory sizes with color-coded charts
     *   Automatic sorting by size to identify the largest folders
 *   **Sortable Results:** Organize search results by name, size, date modified, or path.
@@ -112,7 +113,7 @@ Apple Dragon
 
 ## Version
 
-1.3.7
+1.4.0
 
 ## Acknowledgements
 

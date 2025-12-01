@@ -564,6 +564,71 @@ class ClickableSlider(QSlider):
         # Pass the event to the parent class
         super().mousePressEvent(event)
 
+# Custom ChartView that handles clicks on entire chart area including axis labels
+class ClickableChartView(QChartView):
+    """Custom QChartView that allows clicking anywhere on a chart row to select it"""
+    
+    def __init__(self, chart, parent=None):
+        super().__init__(chart, parent)
+        self.main_window = None
+        self.click_timer = QTimer()
+        self.click_timer.setSingleShot(True)
+        self.click_timer.timeout.connect(self._handle_single_click)
+        self.click_count = 0
+        self.last_click_index = -1
+        
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Get the position relative to the chart
+            pos = event.position() if hasattr(event, 'position') else event.pos()
+            
+            # Try to find which bar/category was clicked
+            chart = self.chart()
+            if not chart:
+                super().mousePressEvent(event)
+                return
+            
+            # Get the chart's plot area
+            plot_area = chart.plotArea()
+            
+            # Check if click is within the chart area (including axis labels on the left)
+            if pos.y() >= plot_area.top() and pos.y() <= plot_area.bottom():
+                # Calculate which bar index based on Y position
+                if hasattr(self, 'main_window') and self.main_window:
+                    categories = getattr(self.main_window, 'scan_chart_categories', [])
+                    if categories:
+                        bar_height = plot_area.height() / len(categories)
+                        # QtCharts displays horizontal bars from bottom to top
+                        # So we need to reverse the index calculation
+                        y_from_top = pos.y() - plot_area.top()
+                        index = len(categories) - 1 - int(y_from_top / bar_height)
+                        
+                        if 0 <= index < len(categories):
+                            # Handle click/double-click detection
+                            if self.click_count == 0:
+                                self.click_count = 1
+                                self.last_click_index = index
+                                self.click_timer.start(300)  # 300ms for double-click detection
+                            elif self.click_count == 1 and self.last_click_index == index:
+                                # Double-click detected
+                                self.click_timer.stop()
+                                self.click_count = 0
+                                self.last_click_index = -1
+                                if self.main_window:
+                                    self.main_window.on_scan_chart_bar_double_clicked(index, None)
+                                return
+        
+        super().mousePressEvent(event)
+    
+    def _handle_single_click(self):
+        """Handle single click after timer expires (no double-click detected)"""
+        if self.click_count == 1 and self.last_click_index >= 0:
+            if self.main_window:
+                self.main_window.on_scan_chart_bar_clicked(self.last_click_index, None)
+        self.click_count = 0
+        self.last_click_index = -1
+
+
 # Custom QTreeWidget to support drag and drop of files to external applications
 class DraggableTreeWidget(QTreeWidget):
     """Custom QTreeWidget to support drag and drop of files to external applications"""
@@ -800,6 +865,67 @@ class DirectoryScanWorker(QThread):
             return 0
         return 0
 
+    def stop(self):
+        self._is_running = False
+
+
+class SubdirScanWorker(QThread):
+    """Scan immediate subdirectories of a directory in background"""
+    
+    result_signal = pyqtSignal(list)  # List of (name, size, Path) tuples
+    error_signal = pyqtSignal(str)
+    
+    def __init__(self, parent_dir):
+        super().__init__()
+        self.parent_dir = Path(parent_dir)
+        self._is_running = True
+    
+    def run(self):
+        try:
+            completed = subprocess.run(
+                ["du", "-d", "1", "-kxP", str(self.parent_dir)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=60
+            )
+            stdout = completed.stdout.decode(errors="ignore").strip()
+            if not stdout:
+                self.result_signal.emit([])
+                return
+            
+            results = []
+            lines = stdout.splitlines()
+            parent_path = self.parent_dir.resolve()
+            
+            for line in lines:
+                if not self._is_running:
+                    return
+                
+                parts = line.split(maxsplit=1)
+                if len(parts) < 2:
+                    continue
+                try:
+                    size_kb = int(parts[0])
+                    path_str = parts[1]
+                    entry_path = Path(path_str).resolve()
+                    
+                    # Skip the parent directory itself
+                    if entry_path == parent_path:
+                        continue
+                    
+                    # Only include immediate children
+                    if entry_path.parent == parent_path and entry_path.is_dir():
+                        results.append((entry_path.name, size_kb * 1024, entry_path))
+                except (ValueError, OSError):
+                    continue
+            
+            self.result_signal.emit(results)
+        except subprocess.TimeoutExpired:
+            self.error_signal.emit("Scan timeout - directory too large or slow")
+        except Exception as exc:
+            self.error_signal.emit(f"Scan failed: {exc}")
+    
     def stop(self):
         self._is_running = False
 
@@ -1438,6 +1564,28 @@ class MdfindApp(QMainWindow):
         
         preview_layout.addLayout(header_layout)
 
+        # Chart navigation bar (back button + breadcrumb)
+        self.chart_nav_container = QWidget()
+        chart_nav_layout = QHBoxLayout(self.chart_nav_container)
+        chart_nav_layout.setContentsMargins(8, 4, 8, 4)
+        chart_nav_layout.setSpacing(8)
+        
+        self.chart_back_button = QPushButton("← Back")
+        self.chart_back_button.setMaximumWidth(80)
+        self.chart_back_button.setToolTip("Return to parent directory")
+        self.chart_back_button.clicked.connect(self.on_chart_back_clicked)
+        self.chart_back_button.setVisible(False)
+        chart_nav_layout.addWidget(self.chart_back_button)
+        
+        self.chart_breadcrumb = QLabel()
+        self.chart_breadcrumb.setWordWrap(False)
+        self.chart_breadcrumb.setStyleSheet("font-weight: 600; padding: 4px 8px;")
+        chart_nav_layout.addWidget(self.chart_breadcrumb, stretch=1)
+        chart_nav_layout.addStretch()
+        
+        self.chart_nav_container.setVisible(False)
+        preview_layout.addWidget(self.chart_nav_container)
+
         # Interactive usage chart (hidden until a scan runs)
         self.scan_chart = QChart()
         self.scan_chart.legend().setVisible(True)
@@ -1445,11 +1593,22 @@ class MdfindApp(QMainWindow):
         self.scan_chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
         self.scan_chart.setMargins(QMargins(24, 18, 32, 24))
         self.scan_chart.setBackgroundRoundness(12)
-        self.scan_chart_view = QChartView(self.scan_chart)
+        self.scan_chart_view = ClickableChartView(self.scan_chart)
+        self.scan_chart_view.main_window = self
         self.scan_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.scan_chart_view.setMinimumHeight(420)
         self.scan_chart_view.setVisible(False)
         self.scan_chart_view.setObjectName("scanChartView")
+        
+        # Hint label for user guidance
+        self.chart_hint_label = QLabel("💡 Tip: Click any row to select • Double-click to drill down into subdirectories")
+        self.chart_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.chart_hint_label.setStyleSheet(
+            "color: #666; font-size: 12px; padding: 6px; "
+            "background: rgba(100, 100, 255, 0.08); "
+            "border-radius: 6px; margin-top: 4px;"
+        )
+        self.chart_hint_label.setVisible(False)
         self.scan_chart_view.setStyleSheet(
             "QChartView#scanChartView {"
             "  border: 1px solid rgba(0, 0, 0, 0.15);"
@@ -1459,10 +1618,13 @@ class MdfindApp(QMainWindow):
             "}"
         )
         preview_layout.addWidget(self.scan_chart_view)
+        preview_layout.addWidget(self.chart_hint_label)
         self._current_scan_series = None
         self.scan_chart_path_map = {}
         self.scan_chart_categories = []
         self.scan_chart_tab_index = None
+        self.scan_chart_nav_stack = []  # Stack to track navigation history
+        self.scan_chart_current_path = None  # Current directory being displayed
         self._update_scan_chart_theme()
         self._chart_overrides_preview = False
         
@@ -2867,6 +3029,7 @@ class MdfindApp(QMainWindow):
         if self._current_scan_series:
             try:
                 self._current_scan_series.clicked.disconnect(self.on_scan_chart_bar_clicked)
+                self._current_scan_series.doubleClicked.disconnect(self.on_scan_chart_bar_double_clicked)
             except (TypeError, RuntimeError):
                 pass
             self._current_scan_series = None
@@ -2875,6 +3038,12 @@ class MdfindApp(QMainWindow):
         self.scan_chart_path_map.clear()
         self.scan_chart_categories = []
         self.scan_chart_tab_index = None
+        self.scan_chart_nav_stack = []
+        self.scan_chart_current_path = None
+        if hasattr(self, 'chart_nav_container'):
+            self.chart_nav_container.setVisible(False)
+        if hasattr(self, 'chart_hint_label'):
+            self.chart_hint_label.setVisible(False)
         self._set_preview_widgets_hidden_for_chart(False)
 
     def _populate_scan_chart(self, scan_tab, tab_index):
@@ -2929,6 +3098,7 @@ class MdfindApp(QMainWindow):
         series.setLabelsFormat("@value GB")
         series.setBarWidth(0.78)
         series.clicked.connect(self.on_scan_chart_bar_clicked)
+        series.doubleClicked.connect(self.on_scan_chart_bar_double_clicked)
         try:
             series.setColorByPoint(True)
             series.setLabelsPosition(QAbstractBarSeries.LabelPosition.OutsideEnd)
@@ -2973,6 +3143,19 @@ class MdfindApp(QMainWindow):
         self.scan_chart_tab_index = tab_index
         self.scan_chart.legend().setVisible(False)
         self._set_preview_widgets_hidden_for_chart(True)
+        
+        # Show hint label
+        if hasattr(self, 'chart_hint_label'):
+            self.chart_hint_label.setVisible(True)
+        
+        # Update navigation breadcrumb
+        if hasattr(self, 'chart_breadcrumb'):
+            if self.scan_chart_current_path:
+                self.chart_breadcrumb.setText(f"📂 {self.scan_chart_current_path}")
+                self.chart_nav_container.setVisible(True)
+                self.chart_back_button.setVisible(len(self.scan_chart_nav_stack) > 0)
+            else:
+                self.chart_nav_container.setVisible(False)
 
     def _update_scan_chart_for_tab(self):
         if not hasattr(self, 'scan_chart_view'):
@@ -3018,6 +3201,159 @@ class MdfindApp(QMainWindow):
                 tree.setCurrentItem(item)
                 tree.scrollToItem(item)
                 break
+
+    def on_scan_chart_bar_double_clicked(self, index, bar_set):
+        """Handle double-click on bar to drill down into subdirectories"""
+        target_path = self.scan_chart_path_map.get(index)
+        if not target_path or target_path is None:
+            return
+        
+        target_dir = Path(target_path)
+        if not target_dir.is_dir():
+            return
+        
+        # Prevent multiple concurrent scans
+        if hasattr(self, 'subdir_scan_worker') and self.subdir_scan_worker and self.subdir_scan_worker.isRunning():
+            return
+        
+        # Save current state to navigation stack
+        if self.scan_chart_tab_index is not None:
+            tab = self.search_tabs.get(self.scan_chart_tab_index)
+            if tab:
+                current_state = {
+                    'path': self.scan_chart_current_path,
+                    'data': list(tab.scan_chart_data),
+                    'title': tab.scan_chart_title
+                }
+                self.scan_chart_nav_stack.append(current_state)
+        
+        # Show loading dialog
+        self.subdir_progress_dialog = QProgressDialog(
+            f"Scanning subdirectories of:\n{target_dir.name}",
+            "Cancel",
+            0, 0,
+            self
+        )
+        self.subdir_progress_dialog.setWindowTitle("Loading...")
+        self.subdir_progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.subdir_progress_dialog.setAutoClose(False)
+        self.subdir_progress_dialog.setMinimumDuration(0)
+        self.subdir_progress_dialog.canceled.connect(self._cancel_subdir_scan)
+        self.apply_dialog_dark_mode(self.subdir_progress_dialog)
+        self.subdir_progress_dialog.show()
+        
+        # Start background scan
+        self.subdir_scan_target = target_dir
+        self.subdir_scan_worker = SubdirScanWorker(target_dir)
+        self.subdir_scan_worker.result_signal.connect(self._on_subdir_scan_complete)
+        self.subdir_scan_worker.error_signal.connect(self._on_subdir_scan_error)
+        self.subdir_scan_worker.finished.connect(self._on_subdir_scan_finished)
+        self.subdir_scan_worker.start()
+    
+    def _cancel_subdir_scan(self):
+        """Cancel the running subdirectory scan"""
+        if hasattr(self, 'subdir_scan_worker') and self.subdir_scan_worker:
+            self.subdir_scan_worker.stop()
+            # Wait for thread to finish gracefully
+            if self.subdir_scan_worker.isRunning():
+                self.subdir_scan_worker.wait(1000)  # Wait up to 1 second
+            self.subdir_scan_worker = None
+        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
+            self.subdir_progress_dialog.close()
+            self.subdir_progress_dialog = None
+    
+    def _on_subdir_scan_complete(self, subdirs):
+        """Handle subdirectory scan completion"""
+        # Close progress dialog first
+        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
+            try:
+                self.subdir_progress_dialog.close()
+            except RuntimeError:
+                pass  # Dialog already destroyed
+            self.subdir_progress_dialog = None
+        
+        if not subdirs:
+            target_path = str(self.subdir_scan_target) if hasattr(self, 'subdir_scan_target') else "directory"
+            self.show_info("No Subdirectories", f"No accessible subdirectories found in:\n{target_path}")
+            return
+        
+        # Update chart with subdirectories
+        if self.scan_chart_tab_index is not None:
+            tab = self.search_tabs.get(self.scan_chart_tab_index)
+            if tab and hasattr(self, 'subdir_scan_target'):
+                # Convert to format: (name, size, mtime, path)
+                chart_data = []
+                for name, size, path in subdirs:
+                    try:
+                        mtime = path.stat().st_mtime if path.exists() else 0
+                    except:
+                        mtime = 0
+                    chart_data.append((name, size, mtime, str(path)))
+                
+                tab.scan_chart_data = chart_data
+                tab.scan_chart_title = f"{self.subdir_scan_target.name}"
+                self.scan_chart_current_path = str(self.subdir_scan_target)
+                self._populate_scan_chart(tab, self.scan_chart_tab_index)
+                
+                # Update tab tree with subdirectories
+                tree = tab.tree
+                if tree:
+                    tree.clear()
+                    for name, size, path in subdirs:
+                        item = QTreeWidgetItem()
+                        item.setText(0, name)
+                        item.setText(1, format_size(size))
+                        try:
+                            mtime = path.stat().st_mtime if path.exists() else 0
+                            date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+                        except:
+                            date_str = ""
+                        item.setText(2, date_str)
+                        item.setText(3, str(path))
+                        tree.addTopLevelItem(item)
+                    
+                    # Update tab metadata
+                    tab.all_file_data = chart_data
+                    tab.file_data = chart_data
+                    tab.current_loaded = len(chart_data)
+                    tab.items_found_count = len(chart_data)
+                    
+                    # Update status label
+                    self.lbl_items_found.setText(f"📊 {len(chart_data)} items found")
+    
+    def _on_subdir_scan_error(self, error_msg):
+        """Handle subdirectory scan error"""
+        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
+            try:
+                self.subdir_progress_dialog.close()
+            except RuntimeError:
+                pass  # Dialog already destroyed
+            self.subdir_progress_dialog = None
+        self.show_error(error_msg)
+    
+    def _on_subdir_scan_finished(self):
+        """Clean up after subdirectory scan finishes"""
+        if hasattr(self, 'subdir_scan_worker') and self.subdir_scan_worker:
+            # Wait for thread to completely finish
+            if self.subdir_scan_worker.isRunning():
+                self.subdir_scan_worker.wait(500)  # Wait up to 0.5 seconds
+            self.subdir_scan_worker = None
+
+    def on_chart_back_clicked(self):
+        """Navigate back to parent directory in chart"""
+        if not self.scan_chart_nav_stack:
+            return
+        
+        # Pop previous state from stack
+        prev_state = self.scan_chart_nav_stack.pop()
+        
+        if self.scan_chart_tab_index is not None:
+            tab = self.search_tabs.get(self.scan_chart_tab_index)
+            if tab:
+                tab.scan_chart_data = prev_state['data']
+                tab.scan_chart_title = prev_state['title']
+                self.scan_chart_current_path = prev_state['path']
+                self._populate_scan_chart(tab, self.scan_chart_tab_index)
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
@@ -6248,7 +6584,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.3.7</p>
+<p><b>Version:</b> 1.4.0</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
@@ -6507,9 +6843,15 @@ class MdfindApp(QMainWindow):
             if hasattr(self, 'player_manager'):
                 self.player_manager.stop()
 
+            # Stop directory scan worker
             if self.scan_worker and self.scan_worker.isRunning():
                 self.scan_worker.stop()
                 self.scan_worker.wait(3000)
+            
+            # Stop subdirectory scan worker
+            if hasattr(self, 'subdir_scan_worker') and self.subdir_scan_worker and self.subdir_scan_worker.isRunning():
+                self.subdir_scan_worker.stop()
+                self.subdir_scan_worker.wait(2000)
         except KeyboardInterrupt:
             print("Close interrupted by user.")
         except Exception as exc:
