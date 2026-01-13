@@ -100,8 +100,8 @@ jobs:
               'plist': {
                   'CFBundleName': 'Everything',
                   'CFBundleDisplayName': 'Everything',
-                  'CFBundleVersion': '1.4.0',
-                  'CFBundleShortVersionString': '1.4.0',
+                  'CFBundleVersion': '1.4.1',
+                  'CFBundleShortVersionString': '1.4.1',
                   'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
                   'LSMinimumSystemVersion': '10.14',
                   'NSHighResolutionCapable': True,
@@ -159,8 +159,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: 'v1.4.0'
-          release_name: 'v1.4.0'
+          tag_name: 'v1.4.1'
+          release_name: 'v1.4.1'
           draft: false
           prerelease: false
 
