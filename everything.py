@@ -14,6 +14,7 @@
 
 import sys
 import os
+import stat
 import json
 import subprocess
 import time
@@ -777,17 +778,17 @@ class SearchWorker(QThread):
                     break
                 idx += 1
                 path = line.strip()
-                if path and os.path.isfile(path):
+                if path:
                     try:
-                        size_ = os.path.getsize(path)
-                        mtime = os.path.getmtime(path)
+                        # Use single os.stat() call instead of multiple os.path calls
+                        stat_result = os.stat(path)
+                        is_dir = stat.S_ISDIR(stat_result.st_mode)
+                        size_ = 0 if is_dir else stat_result.st_size
+                        mtime = stat_result.st_mtime
                         files_info.append((os.path.basename(path), size_, mtime, path))
-                    except Exception as e:
-                        print(f"Error processing file {path}: {e}")
-                elif path and os.path.isdir(path):
-                    # If the path is a directory, add it to the list with size 0
-                    mtime = os.path.getmtime(path)
-                    files_info.append((os.path.basename(path), 0, mtime, path))
+                    except (OSError, IOError):
+                        # File may have been deleted or is inaccessible
+                        continue
                 if idx % 10 == 0:
                     self.progress_signal.emit(min(100, idx % 100))
             self.process.wait()
@@ -928,6 +929,39 @@ class SubdirScanWorker(QThread):
     
     def stop(self):
         self._is_running = False
+
+
+class ImageLoaderThread(QThread):
+    """Background thread for loading and scaling images to avoid UI blocking"""
+    loaded = pyqtSignal(QPixmap, int, int)  # pixmap, original_width, original_height
+    error = pyqtSignal(str)
+    
+    def __init__(self, path, target_size):
+        super().__init__()
+        self.path = path
+        self.target_size = target_size
+        
+    def run(self):
+        try:
+            pixmap = QPixmap(self.path)
+            if pixmap.isNull():
+                self.error.emit(f"Failed to load image: {self.path}")
+                return
+            
+            original_width = pixmap.width()
+            original_height = pixmap.height()
+            
+            # Scale down if larger than target size
+            if pixmap.width() > self.target_size.width() or pixmap.height() > self.target_size.height():
+                pixmap = pixmap.scaled(
+                    self.target_size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+            
+            self.loaded.emit(pixmap, original_width, original_height)
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class MediaPlayerManager:
@@ -1591,6 +1625,7 @@ class MdfindApp(QMainWindow):
         self.scan_chart.legend().setVisible(True)
         self.scan_chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
         self.scan_chart.setAnimationOptions(QChart.AnimationOption.SeriesAnimations)
+        # Normal chart margins
         self.scan_chart.setMargins(QMargins(24, 18, 32, 24))
         self.scan_chart.setBackgroundRoundness(12)
         self.scan_chart_view = ClickableChartView(self.scan_chart)
@@ -2534,19 +2569,22 @@ class MdfindApp(QMainWindow):
                 f"Resolution: {new_width} x {new_height}"
             )
         else:
-            pixmap = QPixmap(path)
-            # Scale down using KeepAspectRatio if pixmap is larger than image_label
-            if (pixmap.width() > self.image_label.width()) or (pixmap.height() > self.image_label.height()):
-                pixmap = pixmap.scaled(
-                    self.image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-            self.image_label.setPixmap(pixmap)
-            self.media_info.appendPlainText(
-                f"Resolution: {pixmap.width()} x {pixmap.height()}"
-            )
+            # Use async loading for regular images to avoid UI blocking
+            self.image_label.setText("Loading...")
+            self._image_loader = ImageLoaderThread(path, self.image_label.size())
+            self._image_loader.loaded.connect(self._on_image_loaded)
+            self._image_loader.error.connect(self._on_image_error)
+            self._image_loader.start()
         self.preview_stack.setCurrentIndex(1)
+    
+    def _on_image_loaded(self, pixmap, orig_width, orig_height):
+        """Handle async image load completion"""
+        self.image_label.setPixmap(pixmap)
+        self.media_info.appendPlainText(f"Resolution: {orig_width} x {orig_height}")
+    
+    def _on_image_error(self, error_msg):
+        """Handle async image load error"""
+        self.image_label.setText("Error loading image")
         
     def display_video_preview(self, path):
         """Handle display of video files"""
@@ -2708,21 +2746,31 @@ class MdfindApp(QMainWindow):
         end_idx = min(search_tab.current_loaded + self.batch_size, len(search_tab.file_data))
         items_to_load = search_tab.file_data[search_tab.current_loaded:end_idx]
         
+        # Disable updates for better performance during batch add
+        search_tab.tree.setUpdatesEnabled(False)
+        
+        # Batch create all tree items first
+        tree_items = []
         for item in items_to_load:
             name, size, mtime, path = item
             display_size = format_size(size)
             display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
             
-            # emoji based on file type
-            if os.path.isdir(path):
+            # emoji based on file type - use size==0 check to avoid extra os.path.isdir call
+            if size == 0 and os.path.isdir(path):
                 display_name = f"📁 {name}"
             else:
                 # Get file extension and add appropriate emoji
                 _, ext = os.path.splitext(name.lower())
                 display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"     
                        
-            tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
-            search_tab.tree.addTopLevelItem(tree_item)
+            tree_items.append(QTreeWidgetItem([display_name, display_size, display_time, path]))
+        
+        # Batch add all items at once
+        search_tab.tree.addTopLevelItems(tree_items)
+        
+        # Re-enable updates
+        search_tab.tree.setUpdatesEnabled(True)
         
         search_tab.current_loaded = end_idx
     # ========== Search handling ==========
@@ -3077,31 +3125,36 @@ class MdfindApp(QMainWindow):
 
         categories = []
         values = []
+        raw_sizes = []  # Store raw byte sizes for tooltips
         divisor = 1024 ** 3  # show GB
         min_display_value = 0.01
 
         for idx, (name, size, _mtime, path) in enumerate(entries):
-            categories.append(name)
+            # Include size in category label (displayed on Y-axis) so it's always visible
             size_gb = size / divisor if size else 0
+            size_str = f"{size_gb:.2f} GB"
+            categories.append(f"{name} ({size_str})")
             display_value = max(size_gb, min_display_value if size > 0 else 0)
             values.append(display_value)
+            raw_sizes.append(size)
             self.scan_chart_path_map[idx] = path
 
+        # Store raw sizes for potential tooltip use
+        self.scan_chart_raw_sizes = raw_sizes
         self.scan_chart_categories = categories
 
         series = QHorizontalBarSeries()
         bar_set = QBarSet("Size (GB)")
-        for value in values:
+        for i, value in enumerate(values):
             bar_set.append(value)
         series.append(bar_set)
-        series.setLabelsVisible(True)
-        series.setLabelsFormat("@value GB")
+        # Disable bar labels since size is shown in Y-axis category names
+        series.setLabelsVisible(False)
         series.setBarWidth(0.78)
         series.clicked.connect(self.on_scan_chart_bar_clicked)
         series.doubleClicked.connect(self.on_scan_chart_bar_double_clicked)
         try:
             series.setColorByPoint(True)
-            series.setLabelsPosition(QAbstractBarSeries.LabelPosition.OutsideEnd)
         except AttributeError:
             pass
 
@@ -3116,7 +3169,8 @@ class MdfindApp(QMainWindow):
         axis_x.setTitleText("Size (GB)")
         axis_x.setLabelFormat("%.2f")
         if values:
-            axis_x.setMax(max(values) * 1.15)
+            # Normal axis range since labels are on Y-axis now
+            axis_x.setMax(max(values) * 1.1)
         axis_x.setLabelsFont(axis_font)
         axis_x.setTitleFont(axis_font)
 
@@ -4610,6 +4664,7 @@ class MdfindApp(QMainWindow):
                 background-color: #ffffff;
                 color: #24292f;
                 selection-background-color: #0969da;
+                selection-color: white;
                 font-size: 13px;
                 min-height: 18px;
             }
@@ -4626,6 +4681,7 @@ class MdfindApp(QMainWindow):
                 border: 1px solid #d1d9e0;
                 border-radius: 6px;
                 selection-background-color: #0969da;
+                selection-color: white;
                 padding: 8px;
                 font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
                 line-height: 1.4;
@@ -5066,7 +5122,8 @@ class MdfindApp(QMainWindow):
                 border-radius: 6px;
                 background-color: #252526;
                 color: #d4d4d4;
-                selection-background-color: #264f78;
+                selection-background-color: #0078d4;
+                selection-color: white;
                 font-size: 13px;
                 min-height: 18px;
             }
@@ -5082,7 +5139,8 @@ class MdfindApp(QMainWindow):
                 color: #d4d4d4;
                 border: 1px solid #404040;
                 border-radius: 6px;
-                selection-background-color: #264f78;
+                selection-background-color: #0078d4;
+                selection-color: white;
                 padding: 8px;
                 font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
                 line-height: 1.4;
@@ -5721,7 +5779,8 @@ class MdfindApp(QMainWindow):
                 border-radius: 6px;
                 background-color: {colors['bg_alt']};
                 color: {colors['fg_main']};
-                selection-background-color: {colors['selection']};
+                selection-background-color: {colors['accent']};
+                selection-color: white;
                 font-size: 13px;
                 min-height: 18px;
             }}
@@ -5737,7 +5796,8 @@ class MdfindApp(QMainWindow):
                 color: {colors['fg_main']};
                 border: 1px solid {colors['border']};
                 border-radius: 6px;
-                selection-background-color: {colors['selection']};
+                selection-background-color: {colors['accent']};
+                selection-color: white;
                 padding: 8px;
                 font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
                 line-height: 1.4;
