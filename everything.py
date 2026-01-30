@@ -41,11 +41,9 @@ from PyQt6.QtCharts import (
     QChart,
     QChartView,
     QBarSet,
-    QBarSeries,
     QHorizontalBarSeries,
     QBarCategoryAxis,
     QValueAxis,
-    QAbstractBarSeries,
 )
 
 CONFIG_PATH = os.path.expanduser("~/.everythingByMdfind.json")
@@ -66,6 +64,55 @@ def write_config(data):
             json.dump(data, f, indent=2)
     except:
         pass
+
+
+def get_dialog_stylesheet(dark_mode=False, include_radio=False, button_padding="10px 16px"):
+    """Generate consistent dialog stylesheet for dark/light mode.
+    
+    Args:
+        dark_mode: True for dark theme, False for light theme
+        include_radio: True to include QRadioButton styles
+        button_padding: CSS padding for QPushButton
+    """
+    if dark_mode:
+        base = """
+            QDialog { background-color: #2d2d30; color: #d4d4d4; }
+            QLabel { color: #e1e4e8; font-size: 14px; }
+            QPushButton {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #0e4775, stop: 1 #0a3d66);
+                border: 1px solid #1177bb; border-radius: 6px; padding: %s;
+                color: white; font-weight: 600; min-width: 80px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #1177bb, stop: 1 #0e639c);
+            }
+        """ % button_padding
+        radio = """
+            QRadioButton { color: #d4d4d4; font-size: 13px; padding: 8px; }
+            QRadioButton::indicator { width: 16px; height: 16px; }
+            QRadioButton::indicator:unchecked { border: 2px solid #404040; border-radius: 9px; background: #252526; }
+            QRadioButton::indicator:checked { border: 2px solid #007fd4; border-radius: 9px; background: #007fd4; }
+        """
+    else:
+        base = """
+            QDialog { background-color: #ffffff; color: #24292f; }
+            QLabel { color: #24292f; font-size: 14px; }
+            QPushButton {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #2ea043, stop: 1 #238636);
+                border: 1px solid #1a7f37; border-radius: 6px; padding: %s;
+                color: white; font-weight: 600; min-width: 80px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #2c974b, stop: 1 #1f883d);
+            }
+        """ % button_padding
+        radio = """
+            QRadioButton { color: #24292f; font-size: 13px; padding: 8px; }
+            QRadioButton::indicator { width: 16px; height: 16px; }
+            QRadioButton::indicator:unchecked { border: 2px solid #d1d9e0; border-radius: 9px; background: #ffffff; }
+            QRadioButton::indicator:checked { border: 2px solid #0969da; border-radius: 9px; background: #0969da; }
+        """
+    return base + radio if include_radio else base
 
 
 # Beautiful ToolTip class for showing confirmation messages
@@ -119,43 +166,34 @@ class BeautifulToolTip(QWidget):
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self.fade_out)
         
-    def setup_style(self):
-        self.setStyleSheet("""
-            BeautifulToolTip {
+    def setup_style(self, dark=False):
+        """Setup tooltip style. dark=True for dark mode blue style."""
+        if dark:
+            colors = ("rgba(33, 150, 243, 180)", "rgba(25, 118, 210, 180)", "150")
+        else:
+            colors = ("rgba(76, 175, 80, 200)", "rgba(56, 142, 60, 200)", "120")
+        
+        self.setStyleSheet(f"""
+            BeautifulToolTip {{
                 background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 rgba(76, 175, 80, 200),
-                    stop: 1 rgba(56, 142, 60, 200));
+                    stop: 0 {colors[0]},
+                    stop: 1 {colors[1]});
                 border-radius: 15px;
-                border: 3px solid rgba(255, 255, 255, 120);
-            }
-            QLabel {
+                border: 3px solid rgba(255, 255, 255, {colors[2]});
+            }}
+            QLabel {{
                 color: white;
                 font-weight: bold;
                 font-size: 16px;
                 background: transparent;
                 border: none;
                 padding: 2px;
-            }
+            }}
         """)
     
     def setup_dark_style(self):
-        self.setStyleSheet("""
-            BeautifulToolTip {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 rgba(33, 150, 243, 180),
-                    stop: 1 rgba(25, 118, 210, 180));
-                border-radius: 15px;
-                border: 3px solid rgba(255, 255, 255, 150);
-            }
-            QLabel {
-                color: white;
-                font-weight: bold;
-                font-size: 16px;
-                background: transparent;
-                border: none;
-                padding: 2px;
-            }
-        """)
+        """Convenience method for dark style."""
+        self.setup_style(dark=True)
     
     def show_message(self, message, parent_widget, duration=2000):
         # Stop any existing animations and timers first
@@ -237,94 +275,8 @@ class ExportFormatDialog(QDialog):
         self.setFixedSize(520, 480)  # increase size to prevent text truncation
         
         # Apply current theme styling
-        if hasattr(parent, 'dark_mode') and parent.dark_mode:
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: #2d2d30;
-                    color: #d4d4d4;
-                }
-                QLabel {
-                    color: #e1e4e8;
-                    font-size: 14px;
-                }
-                QRadioButton {
-                    color: #d4d4d4;
-                    font-size: 13px;
-                    padding: 8px;
-                }
-                QRadioButton::indicator {
-                    width: 16px;
-                    height: 16px;
-                }
-                QRadioButton::indicator:unchecked {
-                    border: 2px solid #404040;
-                    border-radius: 9px;
-                    background: #252526;
-                }
-                QRadioButton::indicator:checked {
-                    border: 2px solid #007fd4;
-                    border-radius: 9px;
-                    background: #007fd4;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0e4775, stop: 1 #0a3d66);
-                    border: 1px solid #1177bb;
-                    border-radius: 6px;
-                    padding: 10px 20px;
-                    color: white;
-                    font-weight: 600;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #1177bb, stop: 1 #0e639c);
-                }
-            """)
-        else:
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: #ffffff;
-                    color: #24292f;
-                }
-                QLabel {
-                    color: #24292f;
-                    font-size: 14px;
-                }
-                QRadioButton {
-                    color: #24292f;
-                    font-size: 13px;
-                    padding: 8px;
-                }
-                QRadioButton::indicator {
-                    width: 16px;
-                    height: 16px;
-                }
-                QRadioButton::indicator:unchecked {
-                    border: 2px solid #d1d9e0;
-                    border-radius: 9px;
-                    background: #ffffff;
-                }
-                QRadioButton::indicator:checked {
-                    border: 2px solid #0969da;
-                    border-radius: 9px;
-                    background: #0969da;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                    border: 1px solid #1a7f37;
-                    border-radius: 6px;
-                    padding: 10px 20px;
-                    color: white;
-                    font-weight: 600;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #1f883d);
-                }
-            """)
+        is_dark = hasattr(parent, 'dark_mode') and parent.dark_mode
+        self.setStyleSheet(get_dialog_stylesheet(dark_mode=is_dark, include_radio=True, button_padding="10px 20px"))
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 25, 20, 20)  # increase top margin to ensure title is fully visible
@@ -344,74 +296,38 @@ class ExportFormatDialog(QDialog):
         title.setWordWrap(True)
         layout.addWidget(title)
         
-        # Format options
+        # Format options - use list to avoid repetition
         self.format_group = QButtonGroup(self)
+        format_options = [
+            ("📄 JSON - Modern structured data", "Export as JSON with metadata and structured information",
+             "    → Best for data processing, APIs, and modern applications"),
+            ("📊 Excel - Spreadsheet with styling", "Export as Excel file with formatting and multiple columns",
+             "    → Perfect for data analysis, charts, and business reports"),
+            ("🌐 HTML - Interactive web page", "Export as styled HTML page with search and filtering",
+             "    → Great for sharing, presentations, and web viewing"),
+            ("📝 Markdown - Documentation format", "Export as Markdown for GitHub, documentation sites",
+             "    → Ideal for GitHub, wikis, and documentation"),
+            ("📋 CSV - Legacy spreadsheet format", "Export as simple CSV for basic compatibility",
+             "    → Simple format for basic spreadsheet applications"),
+        ]
         
-        # JSON format
-        json_radio = QRadioButton("📄 JSON - Modern structured data")
-        json_radio.setToolTip("Export as JSON with metadata and structured information")
-        self.format_group.addButton(json_radio, 0)
-        layout.addWidget(json_radio)
-        
-        json_desc = QLabel("    → Best for data processing, APIs, and modern applications")
-        json_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        json_desc.setWordWrap(True)
-        layout.addWidget(json_desc)
-        
-        layout.addSpacing(5) 
-        
-        # Excel format
-        excel_radio = QRadioButton("📊 Excel - Spreadsheet with styling")
-        excel_radio.setToolTip("Export as Excel file with formatting and multiple columns")
-        self.format_group.addButton(excel_radio, 1)
-        layout.addWidget(excel_radio)
-        
-        excel_desc = QLabel("    → Perfect for data analysis, charts, and business reports")
-        excel_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        excel_desc.setWordWrap(True)
-        layout.addWidget(excel_desc)
-
-        layout.addSpacing(5) 
-
-        # HTML format
-        html_radio = QRadioButton("🌐 HTML - Interactive web page")
-        html_radio.setToolTip("Export as styled HTML page with search and filtering")
-        self.format_group.addButton(html_radio, 2)
-        layout.addWidget(html_radio)
-        
-        html_desc = QLabel("    → Great for sharing, presentations, and web viewing")
-        html_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        html_desc.setWordWrap(True)
-        layout.addWidget(html_desc)
-
-        layout.addSpacing(5) 
-
-        # Markdown format
-        md_radio = QRadioButton("📝 Markdown - Documentation format")
-        md_radio.setToolTip("Export as Markdown for GitHub, documentation sites")
-        self.format_group.addButton(md_radio, 3)
-        layout.addWidget(md_radio)
-        
-        md_desc = QLabel("    → Ideal for GitHub, wikis, and documentation")
-        md_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        md_desc.setWordWrap(True)
-        layout.addWidget(md_desc)
-
-        layout.addSpacing(5) 
-
-        # CSV format (legacy)
-        csv_radio = QRadioButton("📋 CSV - Legacy spreadsheet format")
-        csv_radio.setToolTip("Export as simple CSV for basic compatibility")
-        self.format_group.addButton(csv_radio, 4)
-        layout.addWidget(csv_radio)
-        
-        csv_desc = QLabel("    → Simple format for basic spreadsheet applications")
-        csv_desc.setStyleSheet("color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;")
-        csv_desc.setWordWrap(True)
-        layout.addWidget(csv_desc)
-        
-        # Set JSON as default
-        json_radio.setChecked(True)
+        desc_style = "color: #6c757d; font-size: 12px; margin-left: 20px; padding: 2px 0px;"
+        for idx, (label, tooltip, description) in enumerate(format_options):
+            radio = QRadioButton(label)
+            radio.setToolTip(tooltip)
+            self.format_group.addButton(radio, idx)
+            layout.addWidget(radio)
+            
+            desc = QLabel(description)
+            desc.setStyleSheet(desc_style)
+            desc.setWordWrap(True)
+            layout.addWidget(desc)
+            
+            if idx < len(format_options) - 1:
+                layout.addSpacing(5)
+            
+            if idx == 0:
+                radio.setChecked(True)  # Set JSON as default
         
         layout.addStretch()
         
@@ -447,56 +363,8 @@ class ExportSuccessDialog(QDialog):
         self.setFixedSize(420, 200)
         
         # Apply current theme styling
-        if hasattr(parent, 'dark_mode') and parent.dark_mode:
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: #2d2d30;
-                    color: #d4d4d4;
-                }
-                QLabel {
-                    color: #e1e4e8;
-                    font-size: 14px;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #0e4775, stop: 1 #0a3d66);
-                    border: 1px solid #1177bb;
-                    border-radius: 6px;
-                    padding: 10px 16px;
-                    color: white;
-                    font-weight: 600;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #1177bb, stop: 1 #0e639c);
-                }
-            """)
-        else:
-            self.setStyleSheet("""
-                QDialog {
-                    background-color: #ffffff;
-                    color: #24292f;
-                }
-                QLabel {
-                    color: #24292f;
-                    font-size: 14px;
-                }
-                QPushButton {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2ea043, stop: 1 #238636);
-                    border: 1px solid #1a7f37;
-                    border-radius: 6px;
-                    padding: 10px 16px;
-                    color: white;
-                    font-weight: 600;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                        stop: 0 #2c974b, stop: 1 #1f883d);
-                }
-            """)
+        is_dark = hasattr(parent, 'dark_mode') and parent.dark_mode
+        self.setStyleSheet(get_dialog_stylesheet(dark_mode=is_dark))
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -658,6 +526,13 @@ def format_size(size):
             return f"{size:.2f} {unit}"
         size /= 1024
     return f"{size:.2f} TB"
+
+
+def format_time_label(position_ms, duration_ms):
+    """Format time in MM:SS / MM:SS format for media players."""
+    current_mins, current_secs = divmod(position_ms // 1000, 60)
+    total_mins, total_secs = divmod(duration_ms // 1000, 60)
+    return f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}"
 
 
 # Class to manage individual search tabs
@@ -1194,12 +1069,7 @@ class StandalonePlayerWindow(QMainWindow):
                 self.seek_slider.setValue(position)
             
             total_duration = self.player_manager.get_duration()
-            current_mins = position // 60000
-            current_secs = (position % 60000) // 1000
-            total_mins = total_duration // 60000
-            total_secs = (total_duration % 60000) // 1000
-            
-            self.time_label.setText(f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+            self.time_label.setText(format_time_label(position, total_duration))
         except Exception:
             pass
     
@@ -2659,16 +2529,8 @@ class MdfindApp(QMainWindow):
             if not self.player_manager.slider_dragging:
                 self.seek_slider.setValue(position)
             
-            # Update time label
             total_duration = self.player_manager.get_duration()
-            
-            # Convert milliseconds to MM:SS format
-            current_mins = position // 60000
-            current_secs = (position % 60000) // 1000
-            total_mins = total_duration // 60000
-            total_secs = (total_duration % 60000) // 1000
-            
-            self.time_label.setText(f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}")
+            self.time_label.setText(format_time_label(position, total_duration))
         except Exception:
             # Silently handle errors during position update to prevent player crashes
             pass
@@ -5566,7 +5428,7 @@ class MdfindApp(QMainWindow):
         """Apply Windows 10/11 native titlebar theming"""
         try:
             import ctypes
-            from ctypes import wintypes, windll, byref, sizeof, c_bool, c_int
+            from ctypes import wintypes, windll, byref, sizeof, c_bool
             
             hwnd = int(self.winId())
             
@@ -5625,21 +5487,8 @@ class MdfindApp(QMainWindow):
     def apply_macos_titlebar_theme(self, is_dark):
         """Apply macOS native titlebar theming"""
         try:
-            # Use NSAppearance to set the titlebar theme
-            from PyQt6.QtCore import QTimer
-            
-            # Set the appearance through Qt's native interface
-            if is_dark:
-                # Request dark appearance
-                appearance_name = "NSAppearanceNameDarkAqua"
-            else:
-                # Request light appearance  
-                appearance_name = "NSAppearanceNameAqua"
-            
-            # Apply the appearance (this requires macOS-specific implementation)
-            # For now, we rely on the unified titlebar setting
+            # Apply the appearance through unified titlebar setting
             self.setUnifiedTitleAndToolBarOnMac(True)
-            
         except Exception as e:
             print(f"macOS titlebar theming failed: {e}")
 
@@ -6704,32 +6553,6 @@ class MdfindApp(QMainWindow):
         # Update tab widget style if it exists
         if hasattr(self, 'tab_widget'):
             self.update_tab_style()
-
-    def toggle_dark_mode(self, checked):
-        self.dark_mode = checked
-        if checked:
-            self.set_dark_mode()
-        else:
-            self.set_non_dark_mode()
-            
-        # Update tab widget style (for dynamic width calculation)
-        self.update_tab_style()
-            
-        # Update the standalone player too
-        self.standalone_player.set_dark_mode(checked)
-        
-        # Update the audio label only if there's media currently playing
-        if hasattr(self, 'media_player') and self.media_player.source().isValid():
-            current_path = self.media_player.source().toLocalFile()
-            if current_path:
-                filename = os.path.basename(current_path)
-                self.set_audio_label_display(filename)
-
-        cfg = read_config()
-        cfg["dark_mode"] = checked
-        write_config(cfg)
-        self.dark_mode = checked
-        self._update_scan_chart_theme()
         
     def toggle_history(self, checked):
         self.history_enabled = checked
