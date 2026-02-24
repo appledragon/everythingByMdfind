@@ -1344,6 +1344,11 @@ class MdfindApp(QMainWindow):
         self.edit_extension = QLineEdit()
         self.edit_extension.setPlaceholderText("pdf;docx;xls")
 
+        # Set custom context menu for all QLineEdit fields
+        for edit in (self.edit_query, self.edit_dir, self.edit_min_size, self.edit_max_size, self.edit_extension):
+            edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            edit.customContextMenuRequested.connect(self.show_lineedit_context_menu)
+
         self.chk_file_name = QCheckBox("Search by File Name")
         self.chk_file_name.setChecked(True)
         self.chk_file_name.setToolTip("When unchecked: Search in file content and metadata")
@@ -1974,6 +1979,23 @@ class MdfindApp(QMainWindow):
             self.lbl_items_found.setText("📊 0 items found")
             self._clear_scan_chart()
     
+    def show_lineedit_context_menu(self, pos):
+        """Show context menu with emoji icons for QLineEdit widgets"""
+        edit = self.sender()
+        if not edit:
+            return
+        menu = QMenu(self)
+        menu.addAction("↩️ Undo", edit.undo)
+        menu.addAction("↪️ Redo", edit.redo)
+        menu.addSeparator()
+        menu.addAction("✂️ Cut", edit.cut)
+        menu.addAction("📋 Copy", edit.copy)
+        menu.addAction("📌 Paste", edit.paste)
+        menu.addAction("🗑️ Delete", lambda: edit.insert("") if edit.hasSelectedText() else None)
+        menu.addSeparator()
+        menu.addAction("✅ Select All", edit.selectAll)
+        menu.exec(edit.mapToGlobal(pos))
+
     def show_tab_context_menu(self, pos):
         """Show context menu for tabs"""
         # Get the tab bar
