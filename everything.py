@@ -1259,6 +1259,10 @@ class MdfindApp(QMainWindow):
         bookmarks_menu.addAction("🖼️ Images", self.bookmark_images)
         bookmarks_menu.addAction("🗜️ Archives", self.bookmark_archives)
         bookmarks_menu.addAction("📱 Applications", self.bookmark_applications)
+        bookmarks_menu.addSeparator()
+        bookmarks_menu.addAction("🕐 Recent 24 Hours", self.bookmark_recent_24h)
+        bookmarks_menu.addAction("📅 Recent 7 Days", self.bookmark_recent_7d)
+        bookmarks_menu.addAction("📆 Recent 30 Days", self.bookmark_recent_30d)
         
         self.initialize_extension_emoji_map()
         
@@ -1700,7 +1704,8 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addSeparator()
         self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
         self.single_context_menu.addAction("🔍 Open in Finder", self.open_in_finder)
-        self.single_context_menu.addAction("📤 Export Results", self.export_results)
+        self.single_context_menu.addAction("� Spotlight Metadata", self.show_spotlight_metadata)
+        self.single_context_menu.addAction("�📤 Export Results", self.export_results)
 
         self.multi_context_menu = QMenu(self)
         self.multi_context_menu.addAction("🚀 Open", self.open_multiple_files)
@@ -4282,6 +4287,81 @@ class MdfindApp(QMainWindow):
         except Exception as e:
             self.show_critical("Error", f"Could not open Finder: {e}")
 
+    def show_spotlight_metadata(self):
+        """Show Spotlight metadata for the selected file using mdls"""
+        path = self.get_selected_file()
+        if not path:
+            return
+        try:
+            result = subprocess.run(
+                ["mdls", path],
+                capture_output=True, text=True, timeout=10
+            )
+            output = result.stdout.strip() if result.stdout else "No metadata available."
+        except FileNotFoundError:
+            self.show_warning("⚠️ Not Available", "mdls is not available on this system (macOS only).")
+            return
+        except subprocess.TimeoutExpired:
+            self.show_warning("⚠️ Timeout", "Metadata query timed out.")
+            return
+        except Exception as e:
+            self.show_critical("Error", f"Failed to get metadata: {e}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"🔬 Spotlight Metadata — {os.path.basename(path)}")
+        dialog.resize(680, 520)
+
+        is_dark = hasattr(self, 'dark_mode') and self.dark_mode
+        dialog.setStyleSheet(get_dialog_stylesheet(dark_mode=is_dark))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        title = QLabel(f"📄 {os.path.basename(path)}")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 4px;")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        path_label = QLabel(f"📁 {os.path.dirname(path)}")
+        path_label.setStyleSheet("font-size: 11px; color: #888888; margin-bottom: 8px;")
+        path_label.setWordWrap(True)
+        layout.addWidget(path_label)
+
+        text_edit = QPlainTextEdit()
+        text_edit.setPlainText(output)
+        text_edit.setReadOnly(True)
+        text_edit.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {'#1e1e1e' if is_dark else '#f6f8fa'};
+                color: {'#d4d4d4' if is_dark else '#24292f'};
+                border: 1px solid {'#404040' if is_dark else '#d1d9e0'};
+                border-radius: 6px;
+                padding: 8px;
+                font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+                font-size: 12px;
+            }}
+        """)
+        layout.addWidget(text_edit, 1)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        copy_btn = QPushButton("📋 Copy")
+        copy_btn.clicked.connect(lambda: (
+            QApplication.clipboard().setText(output),
+            self.show_tooltip("Metadata copied to clipboard!")
+        ))
+        btn_layout.addWidget(copy_btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+
+        layout.addLayout(btn_layout)
+        dialog.exec()
+
     def select_directory(self):
         current = os.path.expanduser(self.edit_dir.text())
         directory = QFileDialog.getExistingDirectory(self, "Select Directory", current)
@@ -5565,6 +5645,9 @@ class MdfindApp(QMainWindow):
         'images': ('kMDItemContentTypeTree = "public.image"', 'Images'),
         'archives': ('kMDItemContentTypeTree = "public.archive"', 'Archives'),
         'applications': ('kMDItemContentType == "com.apple.application-bundle"', 'Applications'),
+        'recent_24h': ('kMDItemFSContentChangeDate >= $time.today(-1)', 'Recent 24h'),
+        'recent_7d': ('kMDItemFSContentChangeDate >= $time.today(-7)', 'Recent 7 Days'),
+        'recent_30d': ('kMDItemFSContentChangeDate >= $time.today(-30)', 'Recent 30 Days'),
     }
 
     def _run_bookmark(self, key):
@@ -5577,6 +5660,9 @@ class MdfindApp(QMainWindow):
     def bookmark_images(self): self._run_bookmark('images')
     def bookmark_archives(self): self._run_bookmark('archives')
     def bookmark_applications(self): self._run_bookmark('applications')
+    def bookmark_recent_24h(self): self._run_bookmark('recent_24h')
+    def bookmark_recent_7d(self): self._run_bookmark('recent_7d')
+    def bookmark_recent_30d(self): self._run_bookmark('recent_30d')
 
     # Close the preview panel
     def close_preview(self):
