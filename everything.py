@@ -1704,8 +1704,8 @@ class MdfindApp(QMainWindow):
         self.single_context_menu.addSeparator()
         self.single_context_menu.addAction("🗜️ Compress to ZIP", self.compress_file)
         self.single_context_menu.addAction("🔍 Open in Finder", self.open_in_finder)
-        self.single_context_menu.addAction("� Spotlight Metadata", self.show_spotlight_metadata)
-        self.single_context_menu.addAction("�📤 Export Results", self.export_results)
+        self.single_context_menu.addAction("📝 Spotlight Metadata", self.show_spotlight_metadata)
+        self.single_context_menu.addAction("📤 Export Results", self.export_results)
 
         self.multi_context_menu = QMenu(self)
         self.multi_context_menu.addAction("🚀 Open", self.open_multiple_files)
