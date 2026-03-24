@@ -1287,7 +1287,41 @@ class MdfindApp(QMainWindow):
         
         self.edit_query = QLineEdit()
         self.edit_query.setPlaceholderText("Enter search terms...")
-        
+
+        # Create toggle buttons inside the search input (like VS Code)
+        self.chk_file_name = QToolButton()
+        self.chk_file_name.setCheckable(True)
+        self.chk_file_name.setChecked(True)
+        self.chk_file_name.setToolTip("Search by File Name\n(when off: search in file content and metadata)")
+        self.chk_file_name.setText("Fn")
+        self.chk_file_name.setObjectName("searchToggleBtn")
+
+        self.chk_match_case = QToolButton()
+        self.chk_match_case.setCheckable(True)
+        self.chk_match_case.setToolTip("Match Case")
+        self.chk_match_case.setText("Aa")
+        self.chk_match_case.setObjectName("searchToggleBtn")
+
+        self.chk_full_match = QToolButton()
+        self.chk_full_match.setCheckable(True)
+        self.chk_full_match.setToolTip("Full Match")
+        self.chk_full_match.setText('""')
+        self.chk_full_match.setObjectName("searchToggleBtn")
+
+        # Build the search container: QLineEdit + toggle buttons
+        self.search_container = QWidget()
+        self.search_container.setObjectName("searchContainer")
+        search_container_layout = QHBoxLayout(self.search_container)
+        search_container_layout.setContentsMargins(0, 0, 4, 0)
+        search_container_layout.setSpacing(2)
+        search_container_layout.addWidget(self.edit_query)
+        search_container_layout.addWidget(self.chk_file_name)
+        search_container_layout.addWidget(self.chk_match_case)
+        search_container_layout.addWidget(self.chk_full_match)
+
+        # Track focus to style the search container border
+        self.edit_query.installEventFilter(self)
+
         self.lbl_items_found = QLabel("📊 0 items found")
         self.lbl_items_found.setObjectName("itemsFoundLabel")
         
@@ -1298,7 +1332,7 @@ class MdfindApp(QMainWindow):
         self.btn_refresh.clicked.connect(self.refresh_current_search)
 
         form_layout.addWidget(lbl_query)
-        form_layout.addWidget(self.edit_query, 4)
+        form_layout.addWidget(self.search_container, 4)
         form_layout.addWidget(self.lbl_items_found, 1)
         form_layout.addWidget(self.btn_refresh)
         left_layout.addLayout(form_layout)
@@ -1353,21 +1387,12 @@ class MdfindApp(QMainWindow):
             edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             edit.customContextMenuRequested.connect(self.show_lineedit_context_menu)
 
-        self.chk_file_name = QCheckBox("Search by File Name")
-        self.chk_file_name.setChecked(True)
-        self.chk_file_name.setToolTip("When unchecked: Search in file content and metadata")
-        self.chk_match_case = QCheckBox("Match Case")
-        self.chk_full_match = QCheckBox("Full Match")
-
         adv_layout.addWidget(lbl_min_size, 2)
         adv_layout.addWidget(self.edit_min_size, 5)
         adv_layout.addWidget(lbl_max_size, 2)
         adv_layout.addWidget(self.edit_max_size, 5)
         adv_layout.addWidget(lbl_extension, 2)
         adv_layout.addWidget(self.edit_extension, 5)
-        adv_layout.addWidget(self.chk_file_name, 4)
-        adv_layout.addWidget(self.chk_match_case, 3)
-        adv_layout.addWidget(self.chk_full_match, 3)
 
         group_advanced.setLayout(adv_layout)
         self.group_advanced = group_advanced
@@ -1682,9 +1707,9 @@ class MdfindApp(QMainWindow):
         self.edit_query.returnPressed.connect(self.on_search_enter)
         self.edit_dir.textChanged.connect(self.on_dir_changed)
 
-        self.chk_file_name.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
-        self.chk_match_case.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
-        self.chk_full_match.stateChanged.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
+        self.chk_file_name.toggled.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
+        self.chk_match_case.toggled.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
+        self.chk_full_match.toggled.connect(lambda: self.search_timer.start(DEBOUNCE_DELAY))
         self.edit_min_size.textChanged.connect(self.on_filter_changed)
         self.edit_max_size.textChanged.connect(self.on_filter_changed)
         self.edit_extension.textChanged.connect(self.on_filter_changed)
@@ -4856,6 +4881,50 @@ class MdfindApp(QMainWindow):
             QLineEdit:hover {{
                 border-color: {c['border_hover']};
             }}
+            #searchContainer {{
+                border: 2px solid {c['border']};
+                border-radius: 6px;
+                background-color: {c['bg_input']};
+            }}
+            #searchContainer[focused="true"] {{
+                border: 2px solid {c['accent']};
+            }}
+            #searchContainer QLineEdit {{
+                border: none;
+                padding: 8px 12px;
+                border-radius: 0px;
+                background-color: transparent;
+                min-height: 18px;
+            }}
+            #searchContainer QLineEdit:focus {{
+                border: none;
+                background-color: transparent;
+            }}
+            #searchContainer QLineEdit:hover {{
+                border: none;
+            }}
+            #searchToggleBtn {{
+                background-color: transparent;
+                border: 1px solid transparent;
+                border-radius: 3px;
+                padding: 2px;
+                color: {c['fg_main']};
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 24px;
+                max-width: 24px;
+                min-height: 22px;
+                max-height: 22px;
+            }}
+            #searchToggleBtn:hover {{
+                background-color: rgba({c['accent_rgba']});
+                border-color: {c['border']};
+            }}
+            #searchToggleBtn:checked {{
+                background-color: {c['accent']};
+                color: white;
+                border-color: {c['accent']};
+            }}
             QPlainTextEdit {{
                 background-color: {c['bg_alt']};
                 color: {c['fg_main']};
@@ -5879,6 +5948,17 @@ class MdfindApp(QMainWindow):
             next_index += 1
 
     def eventFilter(self, obj, event):
+        if obj == self.edit_query:
+            if event.type() == event.Type.FocusIn:
+                self.search_container.setProperty("focused", True)
+                self.search_container.style().unpolish(self.search_container)
+                self.search_container.style().polish(self.search_container)
+                return False
+            elif event.type() == event.Type.FocusOut:
+                self.search_container.setProperty("focused", False)
+                self.search_container.style().unpolish(self.search_container)
+                self.search_container.style().polish(self.search_container)
+                return False
         if event.type() == event.Type.MouseButtonPress and (obj == self.video_widget or obj == self.audio_label):
             if event.button() == Qt.MouseButton.LeftButton:
                 self.toggle_play_pause()
