@@ -113,7 +113,7 @@ Apple Dragon
 
 ## Version
 
-1.4.1
+1.4.2
 
 ## Acknowledgements
 

@@ -100,8 +100,8 @@ jobs:
               'plist': {
                   'CFBundleName': 'Everything',
                   'CFBundleDisplayName': 'Everything',
-                  'CFBundleVersion': '1.4.1',
-                  'CFBundleShortVersionString': '1.4.1',
+                  'CFBundleVersion': '1.4.2',
+                  'CFBundleShortVersionString': '1.4.2',
                   'CFBundleIdentifier': 'com.appledragon.everythingbymdfind',
                   'LSMinimumSystemVersion': '10.14',
                   'NSHighResolutionCapable': True,
