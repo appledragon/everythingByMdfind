@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=appledragon&project=everythingByMdfind&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 [English](README.md) | [中文](README_CN.md) | [한국어](README_KO.md) | [日本語](README_JP.md) | [Français](README_FR.md) | [Deutsch](README_DE.md) | [Español](README_ES.md)
 
 <img width="3836" height="2026" alt="image" src="https://github.com/user-attachments/assets/d86c3d6b-6fd4-4cfe-b64f-67c465bb3d3c" /><img width="3832" height="2024" alt="image" src="https://github.com/user-attachments/assets/a91d2b13-07ac-4cae-ab33-506f1fa3bca6" />
