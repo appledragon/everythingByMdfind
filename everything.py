@@ -22,6 +22,8 @@ import csv
 import shutil
 import zipfile
 import traceback
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -29,13 +31,14 @@ from PyQt6.QtWidgets import (
     QCheckBox, QPushButton, QTreeWidget, QTreeWidgetItem, QProgressBar, QMenu,
     QFileDialog, QMessageBox, QGroupBox, QInputDialog, QPlainTextEdit, QSplitter, QStackedWidget, QCompleter,
     QSlider, QToolButton, QStyle, QGraphicsDropShadowEffect, QTabWidget, QDialog, QRadioButton, QButtonGroup,
-    QProgressDialog
+    QProgressDialog, QStyledItemDelegate
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl, QMimeData, QPropertyAnimation, QEasingCurve, QMargins
 from PyQt6.QtGui import QActionGroup, QBrush
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont, QColor
+from PyQt6.QtGui import QPixmap, QMovie, QPainter, QFont, QColor, QPen, QLinearGradient, QGradient
+from PyQt6.QtCore import QRectF, QEvent
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtCharts import (
     QChart,
@@ -55,15 +58,29 @@ def read_config():
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except (OSError, ValueError) as exc:
+        # ValueError covers json.JSONDecodeError (corrupt file); fall back to
+        # defaults rather than crashing, but make the reason visible.
+        print(f"Failed to read config: {exc}")
         return {}
 
 def write_config(data):
+    # Write to a temp file and atomically replace the target so an interrupted
+    # write can never leave a half-written / corrupt config behind.
+    tmp_path = CONFIG_PATH + ".tmp"
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-    except:
-        pass
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, CONFIG_PATH)
+    except (OSError, ValueError) as exc:
+        print(f"Failed to write config: {exc}")
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 def get_dialog_stylesheet(dark_mode=False, include_radio=False, button_padding="10px 16px"):
@@ -535,6 +552,184 @@ def format_time_label(position_ms, duration_ms):
     return f"🕒 {current_mins:02d}:{current_secs:02d} / {total_mins:02d}:{total_secs:02d}"
 
 
+# Item-data role that carries a row's share-of-total (0-100 float) for the
+# "Share" column. Rows without it (normal search results) render nothing.
+SHARE_ROLE = Qt.ItemDataRole.UserRole + 100
+
+
+class PercentBarDelegate(QStyledItemDelegate):
+    """Draws a horizontal proportion bar with a percentage label.
+
+    Used by the disk-analysis "Share" column to show each folder's fraction
+    of the scanned total. The value is read from SHARE_ROLE; the framework
+    still paints the row background/selection so highlighting stays uniform.
+    """
+
+    def __init__(self, parent=None, dark_mode_getter=None):
+        super().__init__(parent)
+        self._dark_mode_getter = dark_mode_getter
+
+    def paint(self, painter, option, index):
+        # Let the style paint the background/selection first (this column's
+        # display text is empty, so nothing else is drawn over the bar).
+        super().paint(painter, option, index)
+
+        value = index.data(SHARE_ROLE)
+        if value is None:
+            return
+        try:
+            pct = float(value)
+        except (TypeError, ValueError):
+            return
+        pct = max(0.0, min(100.0, pct))
+
+        dark = bool(self._dark_mode_getter()) if self._dark_mode_getter else False
+        if dark:
+            track_color = QColor("#242536")
+            grad_start, grad_end = QColor("#3b6fd6"), QColor("#8ab4ff")
+        else:
+            track_color = QColor("#eaeef5")
+            grad_start, grad_end = QColor("#2f6fed"), QColor("#7fb0ff")
+
+        rect = QRectF(option.rect).adjusted(6, 5, -6, -5)
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+        radius = rect.height() / 2.0  # pill-shaped
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        # Track
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(rect, radius, radius)
+        # Filled portion with a left→right accent gradient
+        if pct > 0:
+            fill_width = max(rect.height(), rect.width() * pct / 100.0)
+            fill_rect = QRectF(rect.x(), rect.y(), fill_width, rect.height())
+            gradient = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+            gradient.setColorAt(0.0, grad_start)
+            gradient.setColorAt(1.0, grad_end)
+            painter.setBrush(QBrush(gradient))
+            painter.drawRoundedRect(fill_rect, radius, radius)
+        # Percentage label centred on the bar; white over the fill reads well
+        # in both themes.
+        painter.setPen(QPen(QColor("#ffffff") if pct >= 45 else (
+            QColor("#c8d3f5") if dark else QColor("#33415c"))))
+        font = painter.font()
+        font.setPointSizeF(max(8.0, font.pointSizeF() - 0.5))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(rect, int(Qt.AlignmentFlag.AlignCenter), f"{pct:.1f}%")
+        painter.restore()
+
+
+class LoadingOverlay(QWidget):
+    """Lightweight, asset-free loading overlay.
+
+    Draws a translucent scrim over its parent plus a centered rounded card
+    with an animated spinner and a message — a much cleaner replacement for a
+    modal QProgressDialog. Clicking anywhere cancels (if a callback is set).
+    """
+
+    def __init__(self, parent, dark_mode=True):
+        super().__init__(parent)
+        self._angle = 0
+        self._message = "Scanning…"
+        self._dark = dark_mode
+        self._cancel_callback = None
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._advance)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        self.hide()
+
+    def _advance(self):
+        self._angle = (self._angle + 12) % 360
+        self.update()
+
+    def start(self, message, dark_mode=None, cancel_callback=None):
+        if dark_mode is not None:
+            self._dark = dark_mode
+        self._message = message
+        self._cancel_callback = cancel_callback
+        parent = self.parentWidget()
+        if parent:
+            self.setGeometry(parent.rect())
+            parent.installEventFilter(self)
+        self.raise_()
+        self.show()
+        if not self._timer.isActive():
+            self._timer.start(40)  # ~25 fps
+
+    def stop(self):
+        self._timer.stop()
+        parent = self.parentWidget()
+        if parent:
+            parent.removeEventFilter(self)
+        self.hide()
+
+    def eventFilter(self, obj, event):
+        if obj is self.parentWidget() and event.type() == QEvent.Type.Resize:
+            self.setGeometry(self.parentWidget().rect())
+        return super().eventFilter(obj, event)
+
+    def mousePressEvent(self, event):
+        if self._cancel_callback:
+            self._cancel_callback()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Scrim dimming the chart behind the overlay
+        scrim = QColor(15, 16, 30, 165) if self._dark else QColor(245, 247, 251, 190)
+        painter.fillRect(self.rect(), scrim)
+
+        # Centered card
+        cw, ch = 220, 130
+        cx = (self.width() - cw) // 2
+        cy = (self.height() - ch) // 2
+        card = QRectF(cx, cy, cw, ch)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#1f2233") if self._dark else QColor("#ffffff"))
+        painter.drawRoundedRect(card, 16, 16)
+
+        # Spinner: faint full ring + a rotating accent arc
+        accent = QColor("#8ab4ff") if self._dark else QColor("#2f6fed")
+        track = QColor(255, 255, 255, 45) if self._dark else QColor(0, 0, 0, 30)
+        radius = 20
+        sx = cx + cw / 2
+        sy = cy + 42
+        spinner_rect = QRectF(sx - radius, sy - radius, 2 * radius, 2 * radius)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        ring_pen = QPen(track, 4)
+        ring_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(ring_pen)
+        painter.drawArc(spinner_rect, 0, 360 * 16)
+        arc_pen = QPen(accent, 4)
+        arc_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc_pen)
+        painter.drawArc(spinner_rect, -self._angle * 16, 100 * 16)
+
+        # Message + subtle cancel hint
+        painter.setPen(QPen(QColor("#c8d3f5") if self._dark else QColor("#33415c")))
+        font = painter.font()
+        font.setPointSize(11)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(QRectF(cx, cy + 74, cw, 22),
+                         int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop),
+                         self._message)
+        if self._cancel_callback:
+            painter.setPen(QPen(QColor(200, 211, 245, 140) if self._dark else QColor(90, 100, 120, 160)))
+            hint_font = painter.font()
+            hint_font.setPointSize(9)
+            hint_font.setBold(False)
+            painter.setFont(hint_font)
+            painter.drawText(QRectF(cx, cy + 98, cw, 18),
+                             int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop),
+                             "Click to cancel")
+
+
 # Class to manage individual search tabs
 class SearchTab:
     """Manages the data and widgets for a single search tab"""
@@ -567,8 +762,11 @@ class SearchTab:
         
         # Create the tree widget for this tab
         self.tree = DraggableTreeWidget()
-        self.tree.setColumnCount(4)
-        self.tree.setHeaderLabels(["Name", "Size", "Date Modified", "Path"])
+        # Column 4 ("Share") shows a proportion bar for disk-analysis tabs and
+        # stays hidden for ordinary search results. Path remains column 3 so
+        # existing column references are unaffected.
+        self.tree.setColumnCount(5)
+        self.tree.setHeaderLabels(["Name", "Size", "Date Modified", "Path", "Share"])
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.tree.setSelectionBehavior(QTreeWidget.SelectionBehavior.SelectRows)
         self.tree.setSortingEnabled(False)
@@ -576,6 +774,12 @@ class SearchTab:
         self.tree.setColumnWidth(1, 80)
         self.tree.setColumnWidth(2, 130)
         self.tree.setColumnWidth(3, 350)
+        self.tree.setColumnWidth(4, 150)
+        self.tree.setColumnHidden(4, True)
+        # Show the "Share" bar right after "Size" (visual position 2) while
+        # keeping its logical index 4, so it is immediately visible instead of
+        # hidden past the wide "Path" column. Logical indices are unchanged.
+        self.tree.header().moveSection(self.tree.header().visualIndex(4), 2)
         
         # Sort settings
         self.sort_column = -1
@@ -691,11 +895,17 @@ class DirectoryScanWorker(QThread):
     error_signal = pyqtSignal(str)
     cancelled_signal = pyqtSignal()
 
+    # Cap parallel `du` processes so we speed up wall-clock time on many
+    # folders without thrashing the disk with unbounded concurrency.
+    MAX_WORKERS = 8
+
     def __init__(self, root_path, entries=None):
         super().__init__()
         self.root_path = Path(root_path)
         self.entries = entries
         self._is_running = True
+        self._procs = set()
+        self._procs_lock = threading.Lock()
 
     def run(self):
         try:
@@ -709,40 +919,82 @@ class DirectoryScanWorker(QThread):
             self.result_signal.emit([])
             return
 
+        # Scan folders concurrently: `du` is largely I/O-bound, so overlapping
+        # several folders shrinks total scan time dramatically versus running
+        # them one after another.
         results = []
-        for idx, entry in enumerate(entries, start=1):
-            if not self._is_running:
-                self.cancelled_signal.emit()
-                return
+        processed = 0
+        max_workers = min(self.MAX_WORKERS, total)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_entry = {
+                executor.submit(self._get_directory_size, entry): entry
+                for entry in entries
+            }
+            for future in as_completed(future_to_entry):
+                if not self._is_running:
+                    # Cancel anything still queued; running processes are
+                    # terminated via stop().
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    self.cancelled_signal.emit()
+                    return
 
-            size_bytes = self._get_directory_size(entry)
-            results.append((entry.name, size_bytes))
+                entry = future_to_entry[future]
+                try:
+                    size_bytes = future.result()
+                except Exception:
+                    size_bytes = 0
+                results.append((entry.name, size_bytes))
+                processed += 1
+                self.progress_signal.emit(processed, total, entry.name)
 
-            self.progress_signal.emit(idx, total, entry.name)
+        if not self._is_running:
+            self.cancelled_signal.emit()
+            return
 
         self.result_signal.emit(results)
 
     def _get_directory_size(self, entry):
+        if not self._is_running:
+            return 0
         try:
-            completed = subprocess.run(
+            proc = subprocess.Popen(
                 ["du", "-skxP", str(entry)],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False
+                stderr=subprocess.PIPE
             )
-            stdout = completed.stdout.decode(errors="ignore").strip()
-            if stdout:
-                last_line = stdout.splitlines()[-1]
+        except (OSError, ValueError):
+            return 0
+
+        with self._procs_lock:
+            self._procs.add(proc)
+        try:
+            stdout, _ = proc.communicate()
+        except Exception:
+            return 0
+        finally:
+            with self._procs_lock:
+                self._procs.discard(proc)
+
+        try:
+            text = stdout.decode(errors="ignore").strip()
+            if text:
+                last_line = text.splitlines()[-1]
                 first_token = last_line.split()[0]
                 return int(first_token) * 1024
-        except (ValueError, IndexError, FileNotFoundError, PermissionError):
-            return 0
-        except Exception:
+        except (ValueError, IndexError):
             return 0
         return 0
 
     def stop(self):
         self._is_running = False
+        # Terminate in-flight `du` processes so cancellation is responsive
+        # instead of waiting for large folders to finish.
+        with self._procs_lock:
+            for proc in list(self._procs):
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
 
 
 class SubdirScanWorker(QThread):
@@ -1539,15 +1791,20 @@ class MdfindApp(QMainWindow):
         self.scan_chart_view.setVisible(False)
         self.scan_chart_view.setObjectName("scanChartView")
         
-        # Hint label for user guidance
-        self.chart_hint_label = QLabel("💡 Tip: Click any row to select • Double-click to drill down into subdirectories")
-        self.chart_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.chart_hint_label.setStyleSheet(
-            "color: #666; font-size: 12px; padding: 6px; "
-            "background: rgba(100, 100, 255, 0.08); "
-            "border-radius: 6px; margin-top: 4px;"
+        # Hint label for user guidance. Rich text lets us emphasize the
+        # double-click affordance, which users kept missing.
+        self.chart_hint_label = QLabel()
+        self.chart_hint_label.setTextFormat(Qt.TextFormat.RichText)
+        self.chart_hint_label.setText(
+            "🖱️ <b>Double-click</b> a bar to drill into subfolders"
+            " &nbsp;·&nbsp; single-click to select in the list"
         )
+        self.chart_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.chart_hint_label.setVisible(False)
+        self._style_chart_hint()
+        # A pointing-hand cursor + tooltip make the chart feel clickable.
+        self.scan_chart_view.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.scan_chart_view.setToolTip("Double-click a bar to drill into subfolders")
         self.scan_chart_view.setStyleSheet(
             "QChartView#scanChartView {"
             "  border: 1px solid rgba(0, 0, 0, 0.15);"
@@ -1861,6 +2118,13 @@ class MdfindApp(QMainWindow):
         if self.default_sort_column != -1:
             search_tab.tree.header().setSortIndicator(self.default_sort_column, self.default_sort_order)
         
+        # Install the share-bar delegate on the "Share" column (column 4).
+        share_delegate = PercentBarDelegate(
+            search_tab.tree, dark_mode_getter=lambda: getattr(self, 'dark_mode', False)
+        )
+        search_tab.tree.setItemDelegateForColumn(4, share_delegate)
+        search_tab._share_delegate = share_delegate  # keep a reference alive
+
         # Connect tree signals
         self._connect_tree_signals(search_tab)
         
@@ -1916,7 +2180,7 @@ class MdfindApp(QMainWindow):
                 tab.tree.itemDoubleClicked.disconnect()
                 tab.tree.header().sectionClicked.disconnect()
                 tab.tree.verticalScrollBar().valueChanged.disconnect()
-            except:
+            except (TypeError, RuntimeError):
                 pass  # Ignore if already disconnected
             
             # Remove tab
@@ -2544,7 +2808,7 @@ class MdfindApp(QMainWindow):
                 content = f.read(4096)
             self.text_preview.setPlainText(content)
             self.preview_stack.setCurrentIndex(0)
-        except:
+        except Exception:
             self.text_preview.setPlainText("No preview available.")
             self.preview_stack.setCurrentIndex(0)
 
@@ -2644,22 +2908,32 @@ class MdfindApp(QMainWindow):
         # Disable updates for better performance during batch add
         search_tab.tree.setUpdatesEnabled(False)
         
+        # For disk-analysis tabs, express each row's size as a share of the
+        # scanned total so the "Share" column can draw a proportion bar.
+        is_scan = getattr(search_tab, 'is_scan_tab', False)
+        scan_total = getattr(search_tab, 'scan_total_size', 0) or 0
+
         # Batch create all tree items first
         tree_items = []
         for item in items_to_load:
             name, size, mtime, path = item
             display_size = format_size(size)
             display_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
-            
+
             # emoji based on file type - use size==0 check to avoid extra os.path.isdir call
-            if size == 0 and os.path.isdir(path):
+            # Disk-analysis rows are always folders, so show the folder icon
+            # even though they have a non-zero size.
+            if is_scan or (size == 0 and os.path.isdir(path)):
                 display_name = f"📁 {name}"
             else:
                 # Get file extension and add appropriate emoji
                 _, ext = os.path.splitext(name.lower())
-                display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"     
-                       
-            tree_items.append(QTreeWidgetItem([display_name, display_size, display_time, path]))
+                display_name = f"{self.extension_emoji_map.get(ext, '📄')} {name}"
+
+            tree_item = QTreeWidgetItem([display_name, display_size, display_time, path])
+            if is_scan and scan_total > 0:
+                tree_item.setData(4, SHARE_ROLE, size / scan_total * 100)
+            tree_items.append(tree_item)
         
         # Batch add all items at once
         search_tab.tree.addTopLevelItems(tree_items)
@@ -2908,6 +3182,26 @@ class MdfindApp(QMainWindow):
         self.scan_total_dirs = 0
         self.scan_processed_dirs = 0
 
+    def _populate_scan_tree(self, tab, enriched, dir_path=None):
+        """Fill a scan tab's tree, share column and metadata from a list of
+        (name, size, mtime, path) rows.
+
+        Shared by the top-level scan, drill-down and back-navigation paths so
+        folder icons, the share bar and lazy loading behave identically no
+        matter how the tab was produced.
+        """
+        tab.tree.clear()
+        tab.all_file_data = enriched
+        tab.file_data = enriched
+        tab.current_loaded = 0
+        tab.items_found_count = len(enriched)
+        tab.scan_total_size = sum(row[1] for row in enriched)
+        tab.scan_dir_path = dir_path  # explicit identity for back-navigation
+        tab.tree.setColumnHidden(4, False)  # reveal the "Share" bar column
+        while tab.current_loaded < len(enriched):
+            self.load_more_items(tab)
+        self.lbl_items_found.setText(f"📊 {len(enriched)} items found")
+
     def _show_scan_results_tab(self, root_path, results):
         if not results:
             self.show_info(self.scan_context_label, "Scan completed but no folders were reported.")
@@ -2935,16 +3229,9 @@ class MdfindApp(QMainWindow):
                 mtime = 0
             enriched.append((name, size, mtime, path))
 
-        scan_tab.tree.clear()
-        scan_tab.all_file_data = enriched
-        scan_tab.file_data = enriched
-        scan_tab.current_loaded = 0
-        scan_tab.items_found_count = len(enriched)
         scan_tab.scan_chart_data = enriched
         scan_tab.scan_chart_title = root_path
-        while scan_tab.current_loaded < len(enriched):
-            self.load_more_items(scan_tab)
-        self.lbl_items_found.setText(f"📊 {len(enriched)} items found")
+        self._populate_scan_tree(scan_tab, enriched, dir_path=root_path)
 
         self._ensure_preview_visible()
         self._populate_scan_chart(scan_tab, self.tab_widget.currentIndex())
@@ -3018,19 +3305,35 @@ class MdfindApp(QMainWindow):
         if others_size > 0:
             entries.append(("Others", others_size, 0, None))
 
+        # Pick a single display unit based on the largest entry so small
+        # folders no longer collapse to "0.00 GB" — the axis adapts to the
+        # data (KB / MB / GB / TB) instead of always using GB.
+        max_size = entries[0][1] if entries else 0
+        if max_size >= 1024 ** 4:
+            divisor, unit = 1024 ** 4, "TB"
+        elif max_size >= 1024 ** 3:
+            divisor, unit = 1024 ** 3, "GB"
+        elif max_size >= 1024 ** 2:
+            divisor, unit = 1024 ** 2, "MB"
+        else:
+            divisor, unit = 1024, "KB"
+        self.scan_chart_unit = unit
+
+        # A category axis draws its first entry at the bottom, so reverse the
+        # (largest-first) list to put the biggest folder at the TOP of the chart.
+        entries = list(reversed(entries))
+
         categories = []
         values = []
         raw_sizes = []  # Store raw byte sizes for tooltips
-        divisor = 1024 ** 3  # show GB
-        min_display_value = 0.01
 
         for idx, (name, size, _mtime, path) in enumerate(entries):
-            # Include size in category label (displayed on Y-axis) so it's always visible
-            size_gb = size / divisor if size else 0
-            size_str = f"{size_gb:.2f} GB"
-            categories.append(f"{name} ({size_str})")
-            display_value = max(size_gb, min_display_value if size > 0 else 0)
-            values.append(display_value)
+            # Category label (Y-axis) carries the human-readable size plus its
+            # share of the total so the breakdown is legible at a glance.
+            size_str = format_size(size)
+            pct = (size / total_size * 100) if total_size else 0
+            categories.append(f"{name}  —  {size_str} ({pct:.0f}%)")
+            values.append(size / divisor if size else 0)
             raw_sizes.append(size)
             self.scan_chart_path_map[idx] = path
 
@@ -3039,19 +3342,31 @@ class MdfindApp(QMainWindow):
         self.scan_chart_categories = categories
 
         series = QHorizontalBarSeries()
-        bar_set = QBarSet("Size (GB)")
+        bar_set = QBarSet(f"Size ({unit})")
         for i, value in enumerate(values):
             bar_set.append(value)
         series.append(bar_set)
         # Disable bar labels since size is shown in Y-axis category names
         series.setLabelsVisible(False)
-        series.setBarWidth(0.78)
+        series.setBarWidth(0.82)
         series.clicked.connect(self.on_scan_chart_bar_clicked)
         series.doubleClicked.connect(self.on_scan_chart_bar_double_clicked)
-        try:
-            series.setColorByPoint(True)
-        except AttributeError:
-            pass
+
+        # Fill every bar with a smooth left→right accent gradient (per-bar,
+        # thanks to object-bounding coordinates) for a clean, coordinated look
+        # instead of Qt's default multi-colour palette.
+        gradient = QLinearGradient(0, 0, 1, 0)
+        gradient.setCoordinateMode(QGradient.CoordinateMode.ObjectBoundingMode)
+        if self.dark_mode:
+            gradient.setColorAt(0.0, QColor("#3b6fd6"))
+            gradient.setColorAt(1.0, QColor("#8ab4ff"))
+            border = QColor("#2a2b3c")
+        else:
+            gradient.setColorAt(0.0, QColor("#2f6fed"))
+            gradient.setColorAt(1.0, QColor("#7fb0ff"))
+            border = QColor("#ffffff")
+        bar_set.setBrush(QBrush(gradient))
+        bar_set.setBorderColor(border)
 
         self.scan_chart.addSeries(series)
 
@@ -3061,7 +3376,7 @@ class MdfindApp(QMainWindow):
         axis_font = QFont()
         axis_font.setPointSize(11)
         axis_x = QValueAxis()
-        axis_x.setTitleText("Size (GB)")
+        axis_x.setTitleText(f"Size ({unit})")
         axis_x.setLabelFormat("%.2f")
         if values:
             # Normal axis range since labels are on Y-axis now
@@ -3071,9 +3386,8 @@ class MdfindApp(QMainWindow):
 
         axis_y = QBarCategoryAxis()
         axis_y.append(categories)
-        axis_y.setTitleText("Directory")
+        # Folder names are self-explanatory, so no axis title is needed here.
         axis_y.setLabelsFont(axis_font)
-        axis_y.setTitleFont(axis_font)
 
         self.scan_chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
         self.scan_chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
@@ -3133,6 +3447,29 @@ class MdfindApp(QMainWindow):
         for axis in self.scan_chart.axes():
             axis.setLabelsBrush(QBrush(fg))
             axis.setTitleBrush(QBrush(fg))
+        self._style_chart_hint()
+
+    def _style_chart_hint(self):
+        """Theme-aware, prominent styling for the drill-down hint banner."""
+        if not hasattr(self, 'chart_hint_label'):
+            return
+        if self.dark_mode:
+            style = (
+                "color: #b9c6f2; font-size: 12.5px; font-weight: 500;"
+                " padding: 7px 12px;"
+                " background: rgba(122, 162, 247, 0.18);"
+                " border: 1px solid rgba(122, 162, 247, 0.35);"
+                " border-radius: 8px; margin-top: 6px;"
+            )
+        else:
+            style = (
+                "color: #1f4d8a; font-size: 12.5px; font-weight: 500;"
+                " padding: 7px 12px;"
+                " background: rgba(47, 111, 237, 0.10);"
+                " border: 1px solid rgba(47, 111, 237, 0.30);"
+                " border-radius: 8px; margin-top: 6px;"
+            )
+        self.chart_hint_label.setStyleSheet(style)
 
     def on_scan_chart_bar_clicked(self, index, bar_set):
         target_path = self.scan_chart_path_map.get(index)
@@ -3181,21 +3518,10 @@ class MdfindApp(QMainWindow):
                 }
                 self.scan_chart_nav_stack.append(current_state)
         
-        # Show loading dialog
-        self.subdir_progress_dialog = QProgressDialog(
-            f"Scanning subdirectories of:\n{target_dir.name}",
-            "Cancel",
-            0, 0,
-            self
-        )
-        self.subdir_progress_dialog.setWindowTitle("Loading...")
-        self.subdir_progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
-        self.subdir_progress_dialog.setAutoClose(False)
-        self.subdir_progress_dialog.setMinimumDuration(0)
-        self.subdir_progress_dialog.canceled.connect(self._cancel_subdir_scan)
-        self.apply_dialog_dark_mode(self.subdir_progress_dialog)
-        self.subdir_progress_dialog.show()
-        
+        # Show an inline loading overlay on the chart (much nicer than a modal
+        # progress dialog).
+        self._show_subdir_loading(f"Scanning {target_dir.name}…")
+
         # Start background scan
         self.subdir_scan_target = target_dir
         self.subdir_scan_worker = SubdirScanWorker(target_dir)
@@ -3204,6 +3530,20 @@ class MdfindApp(QMainWindow):
         self.subdir_scan_worker.finished.connect(self._on_subdir_scan_finished)
         self.subdir_scan_worker.start()
     
+    def _show_subdir_loading(self, message):
+        """Show the inline loading overlay on top of the usage chart."""
+        overlay = getattr(self, 'subdir_loading_overlay', None)
+        if overlay is None:
+            overlay = LoadingOverlay(self.scan_chart_view, dark_mode=self.dark_mode)
+            self.subdir_loading_overlay = overlay
+        overlay.start(message, dark_mode=self.dark_mode,
+                      cancel_callback=self._cancel_subdir_scan)
+
+    def _hide_subdir_loading(self):
+        overlay = getattr(self, 'subdir_loading_overlay', None)
+        if overlay is not None:
+            overlay.stop()
+
     def _cancel_subdir_scan(self):
         """Cancel the running subdirectory scan"""
         if hasattr(self, 'subdir_scan_worker') and self.subdir_scan_worker:
@@ -3212,20 +3552,12 @@ class MdfindApp(QMainWindow):
             if self.subdir_scan_worker.isRunning():
                 self.subdir_scan_worker.wait(1000)  # Wait up to 1 second
             self.subdir_scan_worker = None
-        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
-            self.subdir_progress_dialog.close()
-            self.subdir_progress_dialog = None
-    
+        self._hide_subdir_loading()
+
     def _on_subdir_scan_complete(self, subdirs):
         """Handle subdirectory scan completion"""
-        # Close progress dialog first
-        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
-            try:
-                self.subdir_progress_dialog.close()
-            except RuntimeError:
-                pass  # Dialog already destroyed
-            self.subdir_progress_dialog = None
-        
+        self._hide_subdir_loading()
+
         if not subdirs:
             target_path = str(self.subdir_scan_target) if hasattr(self, 'subdir_scan_target') else "directory"
             self.show_info("No Subdirectories", f"No accessible subdirectories found in:\n{target_path}")
@@ -3234,80 +3566,53 @@ class MdfindApp(QMainWindow):
         if not hasattr(self, 'subdir_scan_target'):
             return
         
-        # Convert to format: (name, size, mtime, path)
+        # Convert to format: (name, size, mtime, path), largest first.
         chart_data = []
         for name, size, path in subdirs:
             try:
                 mtime = path.stat().st_mtime if path.exists() else 0
-            except:
+            except Exception:
                 mtime = 0
             chart_data.append((name, size, mtime, str(path)))
-        
+        chart_data.sort(key=lambda row: row[1], reverse=True)
+
         # Create a new tab for the subdirectory
         target_path = str(self.subdir_scan_target)
         tab_title = f"📊 {self.subdir_scan_target.name}"
-        
+
         new_tab = self.create_new_tab(
             query="",
             directory="",
             tab_title=tab_title,
             is_scan_tab=True
         )
-        
+
         # Set up the new tab with scan data
         new_tab.scan_chart_data = chart_data
         new_tab.scan_chart_title = f"{self.subdir_scan_target.name}"
         new_tab.is_scan_tab = True
-        
+
         # Get the new tab index
         new_tab_index = None
         for idx, tab in self.search_tabs.items():
             if tab == new_tab:
                 new_tab_index = idx
                 break
-        
+
         if new_tab_index is not None:
             # Update global chart state to new tab
             self.scan_chart_tab_index = new_tab_index
             self.scan_chart_current_path = target_path
-            
+
             # Populate chart in new tab
             self._populate_scan_chart(new_tab, new_tab_index)
-            
-            # Update tab tree with subdirectories
-            tree = new_tab.tree
-            if tree:
-                tree.clear()
-                for name, size, path in subdirs:
-                    item = QTreeWidgetItem()
-                    item.setText(0, name)
-                    item.setText(1, format_size(size))
-                    try:
-                        mtime = path.stat().st_mtime if path.exists() else 0
-                        date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
-                    except:
-                        date_str = ""
-                    item.setText(2, date_str)
-                    item.setText(3, str(path))
-                    tree.addTopLevelItem(item)
-                
-                # Update tab metadata
-                new_tab.all_file_data = chart_data
-                new_tab.file_data = chart_data
-                new_tab.current_loaded = len(chart_data)
-                new_tab.items_found_count = len(chart_data)
-                
-                # Update status label
-                self.lbl_items_found.setText(f"📊 {len(chart_data)} items found")
+
+            # Populate tree + share column via the shared helper
+            self._populate_scan_tree(new_tab, chart_data, dir_path=target_path)
     
     def _on_subdir_scan_error(self, error_msg):
         """Handle subdirectory scan error"""
-        if hasattr(self, 'subdir_progress_dialog') and self.subdir_progress_dialog:
-            try:
-                self.subdir_progress_dialog.close()
-            except RuntimeError:
-                pass  # Dialog already destroyed
-            self.subdir_progress_dialog = None
+        self._hide_subdir_loading()
         self.show_error(error_msg)
     
     def _on_subdir_scan_finished(self):
@@ -3327,17 +3632,14 @@ class MdfindApp(QMainWindow):
         prev_state = self.scan_chart_nav_stack.pop()
         prev_path = prev_state['path']
         
-        # Check if a tab already exists for this path
+        # Check if a tab already exists for this path (matched by the explicit
+        # directory each scan tab records, rather than inferring it from the
+        # first row's parent which breaks on same-named folders).
         existing_tab_index = None
         for idx, tab in self.search_tabs.items():
-            if (hasattr(tab, 'is_scan_tab') and tab.is_scan_tab and 
-                hasattr(tab, 'scan_chart_data') and tab.scan_chart_data):
-                # Check if this tab's first item path matches the target path
-                if tab.scan_chart_data:
-                    first_item_path = str(Path(tab.scan_chart_data[0][3]).parent) if len(tab.scan_chart_data[0]) > 3 else None
-                    if first_item_path == prev_path:
-                        existing_tab_index = idx
-                        break
+            if getattr(tab, 'is_scan_tab', False) and getattr(tab, 'scan_dir_path', None) == prev_path:
+                existing_tab_index = idx
+                break
         
         if existing_tab_index is not None:
             # Switch to existing tab
@@ -3375,31 +3677,9 @@ class MdfindApp(QMainWindow):
                 
                 # Populate chart in new tab
                 self._populate_scan_chart(new_tab, new_tab_index)
-                
-                # Update tab tree with data
-                tree = new_tab.tree
-                if tree:
-                    tree.clear()
-                    for item_data in prev_state['data']:
-                        item = QTreeWidgetItem()
-                        item.setText(0, item_data[0])  # name
-                        item.setText(1, format_size(item_data[1]))  # size
-                        try:
-                            date_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item_data[2]))
-                        except:
-                            date_str = ""
-                        item.setText(2, date_str)  # mtime
-                        item.setText(3, item_data[3])  # path
-                        tree.addTopLevelItem(item)
-                    
-                    # Update tab metadata
-                    new_tab.all_file_data = prev_state['data']
-                    new_tab.file_data = prev_state['data']
-                    new_tab.current_loaded = len(prev_state['data'])
-                    new_tab.items_found_count = len(prev_state['data'])
-                    
-                    # Update status label
-                    self.lbl_items_found.setText(f"📊 {len(prev_state['data'])} items found")
+
+                # Populate tree + share column via the shared helper
+                self._populate_scan_tree(new_tab, prev_state['data'], dir_path=prev_path)
 
     # ========== Filtering and sorting ==========
     def on_filter_changed(self):
@@ -3490,7 +3770,8 @@ class MdfindApp(QMainWindow):
         def get_sort_key(item):
             if search_tab.sort_column == 0:
                 return item[0].lower()
-            elif search_tab.sort_column == 1:
+            elif search_tab.sort_column == 1 or search_tab.sort_column == 4:
+                # Column 4 ("Share") is proportional to size, so sort by size.
                 return float(item[1])
             elif search_tab.sort_column == 2:
                 return float(item[2])
@@ -4063,7 +4344,7 @@ class MdfindApp(QMainWindow):
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
-                    except:
+                    except Exception:
                         pass
                 adjusted_width = min(max_length + 2, 50)  # Max width of 50
                 ws.column_dimensions[column_letter].width = adjusted_width
@@ -4659,7 +4940,7 @@ class MdfindApp(QMainWindow):
                     hwnd, 20, byref(c_bool(is_dark)), sizeof(c_bool)
                 )
                 success = (result == 0)
-            except:
+            except Exception:
                 pass
             
             # If Windows 11 method failed, try older Windows 10 method
@@ -4668,7 +4949,7 @@ class MdfindApp(QMainWindow):
                     windll.dwmapi.DwmSetWindowAttribute(
                         hwnd, 19, byref(c_bool(is_dark)), sizeof(c_bool)
                     )
-                except:
+                except Exception:
                     pass
             
             # Also try to set the window caption color (Windows 11+)
@@ -4695,7 +4976,7 @@ class MdfindApp(QMainWindow):
                 windll.dwmapi.DwmSetWindowAttribute(
                     hwnd, 35, byref(wintypes.DWORD(caption_color)), sizeof(wintypes.DWORD)
                 )
-            except:
+            except Exception:
                 pass  # Caption color setting not supported on this Windows version
                 
         except Exception as e:
@@ -5429,7 +5710,7 @@ class MdfindApp(QMainWindow):
         about_text = """
 <h2>Everything by mdfind</h2>
 <p>A powerful file search tool for macOS that leverages the Spotlight engine.</p>
-<p><b>Version:</b> 1.4.2</p>
+<p><b>Version:</b> 1.4.3</p>
 <p><b>Author:</b> Apple Dragon</p>
 """
         QMessageBox.about(self, "About Everything by mdfind", about_text)
